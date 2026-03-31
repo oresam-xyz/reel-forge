@@ -7,6 +7,7 @@ at the same visual quality as the H.264 source.
 from __future__ import annotations
 
 import logging
+import warnings
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,9 @@ def compress_video(
     Returns:
         Path to the compressed file.
     """
-    import av
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="builtin type swigvarlink")
+        import av
 
     if output_path is None:
         # Write to temp, then replace

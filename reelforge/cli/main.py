@@ -82,6 +82,9 @@ def new(
         console.print(f"\n[red]Pipeline failed at phase '{project.get_current_phase()}':[/] {e}")
         console.print("[yellow]Fix the issue and run 'reelforge resume' to continue.[/]")
         raise typer.Exit(1)
+    finally:
+        if hasattr(providers.llm, "close"):
+            providers.llm.close()
 
 
 @app.command()
@@ -134,6 +137,9 @@ def resume(
         console.print(f"\n[red]Pipeline failed at phase '{proj.get_current_phase()}':[/] {e}")
         console.print("[yellow]Fix the issue and run 'reelforge resume' again.[/]")
         raise typer.Exit(1)
+    finally:
+        if hasattr(providers.llm, "close"):
+            providers.llm.close()
 
 
 @app.command()

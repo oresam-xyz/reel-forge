@@ -27,6 +27,10 @@ class OllamaLLM(LLMProvider):
         self.base_url = base_url.rstrip("/")
         self._client = httpx.Client(timeout=180.0)
 
+    def close(self) -> None:
+        """Close the underlying HTTP client."""
+        self._client.close()
+
     def generate(self, prompt: str, system: str = "") -> str:
         """Generate a free-form text response from Ollama."""
         payload: dict = {

@@ -104,8 +104,10 @@ def run(project: Project, brand: BrandIdentity, providers: Providers) -> None:
     import shutil
 
     final_path = project.output_path
+    tmpdir = Path(output_path).parent
     if Path(output_path) != final_path:
         shutil.move(output_path, final_path)
+    shutil.rmtree(tmpdir, ignore_errors=True)
 
     logger.info("Video rendered: %s", final_path)
 
