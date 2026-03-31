@@ -67,3 +67,27 @@ class KokoroTTS(TTSProvider):
         logger.info("Audio saved: %s (%.1fs)", output_path, duration)
 
         return AudioAsset(path=str(output_path), duration_seconds=duration)
+
+    def release(self) -> None:
+        """Release GPU memory held by the Kokoro pipeline."""
+        if self._pipeline is not None:
+            del self._pipeline
+            self._pipeline = None
+
+        # Aggressive cleanup — clear all cached GPU tensors and Python garbage
+        try:
+            import gc
+            gc.collect()
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                # Reset peak memory stats
+                torch.cuda.reset_peak_memory_stats()
+            gc.collect()
+            logger.info(
+                "Kokoro released — GPU allocated: %.1f MiB",
+                torch.cuda.memory_allocated() / 1024 / 1024 if torch.cuda.is_available() else 0,
+            )
+        except Exception as e:
+            logger.warning("Kokoro release cleanup error: %s", e)

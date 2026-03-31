@@ -31,6 +31,11 @@ seconds long. Structure it with:
 - A clear call to action (CTA)
 - Tone guidance that matches the brand identity
 
+IMPORTANT: The narration text is read aloud as a voiceover. It must be clean, \
+natural spoken language. Do NOT include source citations, parenthetical references \
+like "(Source: ...)", URLs, or any written-only formatting in the narration. \
+Use the research findings to inform the content but do not cite them in the narration.
+
 The plan MUST respect these brand constraints:
 Always do: {always_does}
 Never do: {never_does}

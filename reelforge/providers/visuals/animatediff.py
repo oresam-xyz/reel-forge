@@ -37,7 +37,23 @@ class AnimateDiffVisual(VisualProvider):
 
     def _get_pipeline(self):
         if self._pipe is None:
+            import gc
+            import os
             import torch
+
+            # Help ROCm handle fragmented VRAM on small GPUs
+            os.environ.setdefault("PYTORCH_HIP_ALLOC_CONF", "expandable_segments:True")
+
+            # Ensure GPU is clean before loading
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                logger.info(
+                    "GPU before AnimateDiff load — allocated: %.1f MiB",
+                    torch.cuda.memory_allocated() / 1024 / 1024,
+                )
+
             from diffusers import AnimateDiffPipeline, DDIMScheduler, MotionAdapter
 
             logger.info("Loading motion adapter: %s", self.motion_adapter_id)
@@ -51,8 +67,7 @@ class AnimateDiffVisual(VisualProvider):
                 self.model_id,
                 motion_adapter=adapter,
                 torch_dtype=torch.float16,
-                low_cpu_mem_usage=False,
-            ).to("cuda")
+            )
             self._pipe.scheduler = DDIMScheduler.from_pretrained(
                 self.model_id,
                 subfolder="scheduler",
@@ -61,8 +76,15 @@ class AnimateDiffVisual(VisualProvider):
                 beta_schedule="linear",
                 steps_offset=1,
             )
-            self._pipe.enable_vae_slicing()
-            self._pipe.enable_vae_tiling()
+            self._pipe.vae.enable_slicing()
+            self._pipe.vae.enable_tiling()
+
+            # Use sequential CPU offload — moves layers to GPU one at a time
+            # Required on GPUs with <4GB free VRAM (e.g. shared display + compute)
+            self._pipe.enable_sequential_cpu_offload()
+            # Slice attention to reduce peak VRAM during inference
+            self._pipe.enable_attention_slicing("auto")
+            logger.info("AnimateDiff loaded with sequential CPU offload + attention slicing")
 
         return self._pipe
 
@@ -110,3 +132,16 @@ class AnimateDiffVisual(VisualProvider):
             torch.cuda.empty_cache()
 
         return assets
+
+    def release(self) -> None:
+        """Release GPU memory held by the AnimateDiff pipeline."""
+        if self._pipe is not None:
+            del self._pipe
+            self._pipe = None
+            try:
+                import torch, gc
+                gc.collect()
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+            logger.info("AnimateDiff pipeline released")

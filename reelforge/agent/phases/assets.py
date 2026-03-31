@@ -1,9 +1,8 @@
-"""Phase 5: Asset generation — voice audio + visual images, run concurrently."""
+"""Phase 5: Asset generation — voice first, then visuals (both need GPU)."""
 
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from reelforge.agent.brand import BrandIdentity
 from reelforge.agent.project import Project
@@ -63,36 +62,27 @@ def _generate_visuals(project: Project, brand: BrandIdentity, providers: Provide
 
 
 def run(project: Project, brand: BrandIdentity, providers: Providers) -> None:
-    """Execute the asset generation phase — voice and visuals in parallel."""
+    """Execute the asset generation phase — voice first, then visuals."""
     logger.info("Starting asset generation")
 
-    audio_path = None
-    visual_paths = None
-    errors = []
+    # Run TTS first, then visuals — both need GPU, can't run in parallel
+    audio_path = _generate_voice(project, brand, providers)
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        voice_future = executor.submit(_generate_voice, project, brand, providers)
-        visual_future = executor.submit(_generate_visuals, project, brand, providers)
+    # Free GPU memory from TTS before loading the visual model
+    if hasattr(providers.tts, 'release'):
+        providers.tts.release()
 
-        for future in as_completed([voice_future, visual_future]):
-            try:
-                result = future.result()
-                if future == voice_future:
-                    audio_path = result
-                else:
-                    visual_paths = result
-            except Exception as e:
-                errors.append(str(e))
-                logger.error("Asset generation error: %s", e)
+    visual_paths = _generate_visuals(project, brand, providers)
 
-    if errors:
-        raise RuntimeError(f"Asset generation failed: {'; '.join(errors)}")
+    # Free GPU memory from visuals before render phase (Whisper needs GPU)
+    if hasattr(providers.visual, 'release'):
+        providers.visual.release()
 
     if audio_path is None or visual_paths is None:
         raise RuntimeError("Asset generation incomplete — missing audio or visuals")
 
     logger.info(
-        "All assets generated: audio=%s, %d images",
+        "All assets generated: audio=%s, %d visuals",
         audio_path,
         len(visual_paths) if visual_paths else 0,
     )

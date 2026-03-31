@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import subprocess
@@ -17,6 +18,21 @@ from reelforge.providers.base import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _get_audio_duration(ffprobe_path: str, audio_path: str) -> float:
+    """Get the duration of an audio file using ffprobe."""
+    cmd = [
+        ffprobe_path, "-v", "quiet",
+        "-print_format", "json",
+        "-show_format",
+        audio_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode == 0:
+        data = json.loads(result.stdout)
+        return float(data.get("format", {}).get("duration", 0))
+    return 0.0
 
 
 def _escape_drawtext(text: str) -> str:
@@ -94,6 +110,7 @@ class FFmpegRenderer(RendererProvider):
     ) -> None:
         """Scale, loop, and trim a video clip to fill the target duration."""
         # Use -stream_loop to loop short clips to fill the target duration
+        # Re-encode at the target fps to avoid judder from fps mismatch
         cmd = [
             self.ffmpeg_path, "-y",
             "-stream_loop", "-1",
@@ -101,6 +118,7 @@ class FFmpegRenderer(RendererProvider):
             "-vf", (
                 f"scale={width}:{height}:force_original_aspect_ratio=increase,"
                 f"crop={width}:{height},"
+                f"fps={self.fps},"
                 f"format=yuv420p"
             ),
             "-t", str(duration),
@@ -159,11 +177,31 @@ class FFmpegRenderer(RendererProvider):
         # Sort visuals by segment_id
         sorted_visuals = sorted(visuals, key=lambda v: v.segment_id)
 
+        # Get actual audio duration and compute proportional segment durations
+        ffprobe_path = shutil.which("ffprobe") or "ffprobe"
+        audio_duration = _get_audio_duration(ffprobe_path, audio.path)
+        script_durations = [
+            script.segments[i].duration_seconds if i < len(script.segments) else 5.0
+            for i in range(len(sorted_visuals))
+        ]
+        script_total = sum(script_durations) or 1.0
+
+        if audio_duration > 0:
+            # Scale segment durations proportionally to match actual audio length
+            segment_durations = [
+                d / script_total * audio_duration for d in script_durations
+            ]
+            logger.info(
+                "Audio duration: %.1fs, script total: %.1fs — scaling segment durations",
+                audio_duration, script_total,
+            )
+        else:
+            segment_durations = script_durations
+            logger.warning("Could not detect audio duration, using script estimates")
+
         # Step 1: Create video clips for each segment
         for i, visual in enumerate(sorted_visuals):
-            duration = 5.0
-            if i < len(script.segments):
-                duration = script.segments[i].duration_seconds
+            duration = segment_durations[i]
 
             segment_path = f"{tmpdir}/segment_{i:03d}.mp4"
             logger.info(

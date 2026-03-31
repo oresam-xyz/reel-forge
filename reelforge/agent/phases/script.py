@@ -25,7 +25,9 @@ Tone guidance: {tone_guidance}
 
 Instructions:
 - Write the narration for each segment in the brand's voice and tone.
-- The narration should sound natural when spoken aloud.
+- The narration is read aloud as a voiceover — it MUST be clean, natural spoken \
+  language. Do NOT include source citations, parenthetical references like \
+  "(Source: ...)", URLs, or any written-only formatting. Just speak naturally.
 - Match the reading pace: {reading_pace}
 - Vocabulary level: {vocabulary}
 - Each segment's narration should flow naturally into the next.

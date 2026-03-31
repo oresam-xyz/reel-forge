@@ -17,10 +17,10 @@ class WanVisual(VisualProvider):
         self,
         model_id: str = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
         num_inference_steps: int = 25,
-        num_frames: int = 33,
+        num_frames: int = 17,
         width: int = 480,
-        height: int = 832,
-        fps: int = 16,
+        height: int = 480,
+        fps: int = 8,
         output_dir: str = ".",
         **kwargs,
     ) -> None:
@@ -35,50 +35,45 @@ class WanVisual(VisualProvider):
 
     def _get_pipeline(self):
         if self._pipe is None:
-            try:
-                import torch
-                from diffusers import AutoencoderKLWan, WanPipeline
-                from diffusers.utils import export_to_video
-            except ImportError:
-                raise ImportError(
-                    "The 'diffusers' and 'torch' packages are required for Wan. "
-                    "Install with: pip install diffusers torch"
-                )
+            import gc
+            import os
             import torch
+
+            os.environ.setdefault("PYTORCH_HIP_ALLOC_CONF", "expandable_segments:True")
+
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                logger.info(
+                    "GPU before Wan load — allocated: %.1f MiB",
+                    torch.cuda.memory_allocated() / 1024 / 1024,
+                )
+
+            from diffusers import AutoencoderKLWan, WanPipeline
 
             logger.info("Loading Wan2.1 model: %s", self.model_id)
 
-            try:
-                vae = AutoencoderKLWan.from_pretrained(
-                    self.model_id,
-                    subfolder="vae",
-                    torch_dtype=torch.float32,
-                )
+            vae = AutoencoderKLWan.from_pretrained(
+                self.model_id,
+                subfolder="vae",
+                torch_dtype=torch.float32,
+            )
 
-                self._pipe = WanPipeline.from_pretrained(
-                    self.model_id,
-                    vae=vae,
-                    torch_dtype=torch.bfloat16,
-                )
-                self._pipe.enable_model_cpu_offload()
-            except Exception as e:
-                logger.warning("Failed to initialize model on CUDA: %s. "
-                               "Try setting device='cpu' or check CUDA installation.", e)
-                # Fallback: load to CPU first, then move
-                vae = AutoencoderKLWan.from_pretrained(
-                    self.model_id,
-                    subfolder="vae",
-                    torch_dtype=torch.float32,
-                    low_cpu_mem_usage=False,
-                )
+            # Use float16 instead of bfloat16 — better ROCm gfx1030 support
+            self._pipe = WanPipeline.from_pretrained(
+                self.model_id,
+                vae=vae,
+                torch_dtype=torch.float16,
+            )
 
-                self._pipe = WanPipeline.from_pretrained(
-                    self.model_id,
-                    vae=vae,
-                    torch_dtype=torch.bfloat16,
-                    low_cpu_mem_usage=False,
-                )
-                self._pipe.to("cuda")
+            # Sequential CPU offload moves one layer at a time to GPU
+            # Required for GPUs with limited free VRAM (shared display)
+            self._pipe.enable_sequential_cpu_offload()
+            self._pipe.enable_attention_slicing("auto")
+            self._pipe.vae.enable_slicing()
+            self._pipe.vae.enable_tiling()
+            logger.info("Wan2.1 loaded with sequential CPU offload + attention slicing")
 
         return self._pipe
 
@@ -125,3 +120,20 @@ class WanVisual(VisualProvider):
             torch.cuda.empty_cache()
 
         return assets
+
+    def release(self) -> None:
+        """Release GPU memory held by the Wan pipeline."""
+        if self._pipe is not None:
+            del self._pipe
+            self._pipe = None
+        try:
+            import gc
+            gc.collect()
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+            gc.collect()
+            logger.info("Wan pipeline released")
+        except Exception as e:
+            logger.warning("Wan release cleanup error: %s", e)
