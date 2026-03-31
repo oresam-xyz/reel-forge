@@ -562,5 +562,35 @@ def update_script(
     })
 
 
+@mcp.tool()
+def split_video(project_id: str, max_size_mb: float = 10.0) -> str:
+    """Split a project's output video into parts for WhatsApp or other size-limited platforms.
+
+    WhatsApp has a 10 MB upload limit. This splits the video using ffmpeg
+    segment muxer (no re-encoding) into parts under the specified size.
+    Returns the list of part file paths.
+    """
+    from reelforge.agent.project import Project
+    from reelforge.providers.renderer.split import split_video as _split_video
+
+    _, projects_dir = _get_dirs()
+    project = Project.load(projects_dir / project_id)
+
+    video_path = str(project.output_path)
+    if not project.output_path.exists():
+        return json.dumps({"error": f"No output video found for project {project_id}"})
+
+    parts = _split_video(video_path, max_size_mb=max_size_mb)
+
+    return json.dumps({
+        "project_id": project_id,
+        "parts": [
+            {"path": p, "size_mb": round(Path(p).stat().st_size / (1024 * 1024), 1)}
+            for p in parts
+        ],
+        "num_parts": len(parts),
+    })
+
+
 if __name__ == "__main__":
     mcp.run()

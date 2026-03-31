@@ -249,6 +249,40 @@ def brand_list(
     console.print(table)
 
 
+@app.command()
+def split(
+    project: str = typer.Option("", "--project", "-p", help="Project ID — splits that project's output.mp4"),
+    file: Path = typer.Option(None, "--file", "-f", help="Path to any video file to split"),
+    max_size: float = typer.Option(10.0, "--max-size", "-s", help="Max file size per part in MB"),
+    config: Path = typer.Option(Path("config.yaml"), "--config", "-c", help="Config file path"),
+) -> None:
+    """Split a video into parts for WhatsApp or other size-limited platforms."""
+    from reelforge.providers.renderer.split import split_video
+
+    if file:
+        video_path = str(file)
+    elif project:
+        _, _, projects_dir = _resolve_dirs(config)
+        video_path = str(projects_dir / project / "output.mp4")
+    else:
+        console.print("[red]Error:[/] Provide --project or --file")
+        raise typer.Exit(1)
+
+    if not Path(video_path).exists():
+        console.print(f"[red]Error:[/] Video not found: {video_path}")
+        raise typer.Exit(1)
+
+    parts = split_video(video_path, max_size_mb=max_size)
+
+    if len(parts) == 1:
+        console.print(f"[green]Video is already under {max_size:.0f} MB — no split needed.[/]")
+    else:
+        console.print(f"[green]Split into {len(parts)} parts:[/]")
+        for p in parts:
+            size_mb = Path(p).stat().st_size / (1024 * 1024)
+            console.print(f"  {p} ({size_mb:.1f} MB)")
+
+
 def main() -> None:
     app()
 

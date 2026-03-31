@@ -82,10 +82,32 @@ reelforge new --topic "5 AI tools you need in 2025" --brand example_brand
 reelforge resume --project 2025-01-15_5-ai-tools-you-need-in-2025
 ```
 
+#### Auto-approve (skip interactive review)
+
+```bash
+reelforge new --topic "5 AI tools" --brand example_brand --auto-approve
+reelforge resume --project <project_id> --auto-approve
+```
+
 #### Check project status
 
 ```bash
 reelforge status --project 2025-01-15_5-ai-tools-you-need-in-2025
+```
+
+#### Split video for WhatsApp
+
+WhatsApp has a 10 MB upload limit. Split a video into parts:
+
+```bash
+# Split a project's output
+reelforge split --project <project_id>
+
+# Split any video file
+reelforge split --file /path/to/video.mp4
+
+# Custom size limit (default: 10 MB)
+reelforge split --project <project_id> --max-size 8
 ```
 
 ### MCP Server
@@ -128,6 +150,10 @@ Set `REELFORGE_ROOT` env var to override the working directory.
 | `list_brands` | — | List available brands |
 | `get_plan` | `project_id` | Get the content plan for review |
 | `approve_plan` | `project_id`, `approved`, `feedback` | Approve, edit, or reject a plan |
+| `reset_phases` | `project_id`, `from_phase` | Reset phases from a given point to re-run them |
+| `get_script` | `project_id` | Get the generated script |
+| `update_script` | `project_id`, `segment_id`, `narration`, `visual_prompt`, ... | Edit a specific script segment |
+| `split_video` | `project_id`, `max_size_mb` (default: 10) | Split output into parts for WhatsApp |
 
 #### Agent-driven workflow
 
@@ -146,6 +172,25 @@ approve_plan(project_id, approved=true, feedback="make it funnier")
 
 run_pipeline(project_id)
   → completes remaining phases → output.mp4
+
+split_video(project_id, max_size_mb=10)
+  → splits for WhatsApp if needed
+```
+
+#### Edit and re-render workflow
+
+```
+get_script(project_id)
+  → read current script
+
+update_script(project_id, segment_id=0, narration="new text...")
+  → edit a segment
+
+reset_phases(project_id, from_phase="assets")
+  → reset assets + render
+
+run_pipeline(project_id)
+  → regenerates video with updated script
 ```
 
 ## Provider System
