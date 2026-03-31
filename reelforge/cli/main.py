@@ -37,11 +37,20 @@ def _resolve_dirs(config_path: Path) -> tuple:
     return config, brands_dir, projects_dir
 
 
+def _auto_approve_review(project, brand, providers) -> None:
+    """Non-interactive review — just approve the plan."""
+    plan = project.load_plan()
+    plan.approved = True
+    project.save_plan(plan)
+    console.print("[green]Plan auto-approved.[/]")
+
+
 @app.command()
 def new(
     topic: str = typer.Option(..., "--topic", "-t", help="The video topic"),
     brand: str = typer.Option(..., "--brand", "-b", help="Brand name to use"),
     config: Path = typer.Option(Path("config.yaml"), "--config", "-c", help="Config file path"),
+    auto_approve: bool = typer.Option(False, "--auto-approve", "-y", help="Auto-approve the plan without interactive review"),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
     """Create a new video project and run the pipeline."""
@@ -75,8 +84,10 @@ def new(
         console.print(f"[red]Provider error:[/] {e}")
         raise typer.Exit(1)
 
+    phase_overrides = {"review": _auto_approve_review} if auto_approve else None
+
     try:
-        run_pipeline(project, brand_identity, providers)
+        run_pipeline(project, brand_identity, providers, phase_overrides=phase_overrides)
         console.print(f"\n[bold green]Pipeline complete![/] Output: {project.output_path}")
     except Exception as e:
         console.print(f"\n[red]Pipeline failed at phase '{project.get_current_phase()}':[/] {e}")
@@ -91,6 +102,7 @@ def new(
 def resume(
     project: str = typer.Option(..., "--project", "-p", help="Project ID or directory path"),
     config: Path = typer.Option(Path("config.yaml"), "--config", "-c", help="Config file path"),
+    auto_approve: bool = typer.Option(False, "--auto-approve", "-y", help="Auto-approve the plan without interactive review"),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
     """Resume an existing project from where it left off."""
@@ -130,8 +142,10 @@ def resume(
         console.print(f"[red]Provider error:[/] {e}")
         raise typer.Exit(1)
 
+    phase_overrides = {"review": _auto_approve_review} if auto_approve else None
+
     try:
-        run_pipeline(proj, brand_identity, providers)
+        run_pipeline(proj, brand_identity, providers, phase_overrides=phase_overrides)
         console.print(f"\n[bold green]Pipeline complete![/] Output: {proj.output_path}")
     except Exception as e:
         console.print(f"\n[red]Pipeline failed at phase '{proj.get_current_phase()}':[/] {e}")

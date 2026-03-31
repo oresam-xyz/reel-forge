@@ -202,12 +202,18 @@ def run_pipeline(project_id: str, auto_approve: bool = True) -> str:
     if auto_approve:
         overrides["review"] = _auto_approve_review
     else:
-        # Stop before review if plan isn't approved yet
+        # MCP is non-interactive — never fall through to the CLI review phase.
+        # If plan is already approved (via approve_plan), just mark it done.
+        # Otherwise, stop before review so the agent can inspect and approve.
         plan_path = project.project_dir / "plan.json"
         if plan_path.exists():
             plan = project.load_plan()
-            if not plan.approved:
+            if plan.approved:
+                overrides["review"] = _auto_approve_review
+            else:
                 overrides["review"] = _stop_before_review
+        else:
+            overrides["review"] = _stop_before_review
 
     try:
         _run_pipeline(project, brand, providers, phase_overrides=overrides or None)

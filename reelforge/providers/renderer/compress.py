@@ -1,7 +1,7 @@
 """Post-render video compression using PyAV (libav/FFmpeg bindings).
 
-Re-encodes the rendered video with H.265 (HEVC) for ~50% smaller files
-at the same visual quality as the H.264 source.
+Re-encodes the rendered video with H.264 for broad compatibility
+(WhatsApp, social media, web) while keeping file sizes reasonable.
 """
 
 from __future__ import annotations
@@ -16,21 +16,23 @@ logger = logging.getLogger(__name__)
 def compress_video(
     input_path: str,
     output_path: str | None = None,
-    codec: str = "libx265",
-    crf: int = 28,
+    codec: str = "libx264",
+    crf: int = 23,
     preset: str = "medium",
-    audio_bitrate: int = 96_000,
+    audio_bitrate: int = 128_000,
+    audio_sample_rate: int = 44_100,
 ) -> str:
     """Compress a video file using PyAV.
 
     Args:
         input_path: Path to the source video.
         output_path: Path for compressed output. Defaults to replacing the input.
-        codec: Video codec (libx265 for HEVC, libx264 for AVC).
+        codec: Video codec (libx264 for broad compatibility, libx265 for smaller files).
         crf: Constant Rate Factor — lower = better quality, bigger file.
-             28 is default for x265 (visually ~equivalent to x264 CRF 23).
+             23 is default for x264.
         preset: Encoding speed/compression tradeoff (ultrafast..veryslow).
-        audio_bitrate: Audio bitrate in bps. 96k is fine for speech.
+        audio_bitrate: Audio bitrate in bps.
+        audio_sample_rate: Audio sample rate in Hz. 44100 for broad compatibility.
 
     Returns:
         Path to the compressed file.
@@ -58,7 +60,7 @@ def compress_video(
     )
 
     input_container = av.open(input_path, mode="r")
-    output_container = av.open(output_path, mode="w")
+    output_container = av.open(output_path, mode="w", options={"movflags": "+faststart"})
 
     # Set up video stream
     in_video = input_container.streams.video[0]
@@ -66,20 +68,33 @@ def compress_video(
     out_video.width = in_video.width
     out_video.height = in_video.height
     out_video.pix_fmt = "yuv420p"
-    out_video.options = {
+    codec_options = {
         "crf": str(crf),
         "preset": preset,
-        "x265-params": "log-level=warning",
     }
-    # Tag as hvc1 for broad player compatibility (Apple, web, etc.)
     if "265" in codec or "hevc" in codec.lower():
+        codec_options["x265-params"] = "log-level=warning"
         out_video.codec_context.codec_tag = "hvc1"
+    elif "264" in codec:
+        # Baseline profile + faststart-friendly settings for WhatsApp/social
+        codec_options["profile"] = "high"
+        codec_options["level"] = "4.1"
+    out_video.options = codec_options
 
-    # Set up audio stream
+    # Set up audio stream — resample to target rate for compatibility
     in_audio = input_container.streams.audio[0]
-    out_audio = output_container.add_stream("aac", rate=in_audio.rate)
+    out_audio = output_container.add_stream("aac", rate=audio_sample_rate)
     out_audio.bit_rate = audio_bitrate
     out_audio.layout = in_audio.layout
+
+    # Set up audio resampler if sample rates differ
+    resampler = None
+    if in_audio.rate != audio_sample_rate:
+        resampler = av.AudioResampler(
+            format="fltp",
+            layout=in_audio.layout,
+            rate=audio_sample_rate,
+        )
 
     # Re-encode all packets
     for packet in input_container.demux():
@@ -89,9 +104,16 @@ def compress_video(
                     output_container.mux(out_packet)
         elif packet.stream.type == "audio":
             for frame in packet.decode():
-                frame.pts = None  # let encoder set pts
-                for out_packet in out_audio.encode(frame):
-                    output_container.mux(out_packet)
+                if resampler:
+                    resampled = resampler.resample(frame)
+                    for rs_frame in resampled:
+                        rs_frame.pts = None
+                        for out_packet in out_audio.encode(rs_frame):
+                            output_container.mux(out_packet)
+                else:
+                    frame.pts = None
+                    for out_packet in out_audio.encode(frame):
+                        output_container.mux(out_packet)
 
     # Flush encoders
     for out_packet in out_video.encode():
