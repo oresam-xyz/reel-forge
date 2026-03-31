@@ -105,7 +105,12 @@ def instantiate_providers(config: AppConfig) -> Providers:
     )
 
 
-def run_pipeline(project: Project, brand: BrandIdentity, providers: Providers) -> None:
+def run_pipeline(
+    project: Project,
+    brand: BrandIdentity,
+    providers: Providers,
+    phase_overrides: dict[str, PhaseFunc] | None = None,
+) -> None:
     """Execute the pipeline, skipping completed phases and resuming from the first pending/failed one."""
     logger.info(
         "Starting pipeline for project '%s' (topic: %s)",
@@ -124,7 +129,10 @@ def run_pipeline(project: Project, brand: BrandIdentity, providers: Providers) -
         project.mark_phase_running(phase_name)
 
         try:
-            phase_func = _get_phase_func(phase_name)
+            if phase_overrides and phase_name in phase_overrides:
+                phase_func = phase_overrides[phase_name]
+            else:
+                phase_func = _get_phase_func(phase_name)
             phase_func(project, brand, providers)
             project.mark_phase_complete(phase_name)
         except Exception as e:

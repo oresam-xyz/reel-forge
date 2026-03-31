@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "reelforge": {
+      "command": "python3",
+      "args": ["-m", "reelforge.mcp_server"],
+      "cwd": "/home/hurricane/Documents/projects/reel-forge"
+    }
+  }
+}
