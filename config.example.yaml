@@ -1,0 +1,22 @@
+providers:
+  llm:
+    provider: ollama
+    model: llama3.2
+    base_url: http://localhost:11434
+  tts:
+    provider: kokoro
+  visuals:
+    provider: flux
+    # For Pexels, use:
+    # provider: pexels
+    # pexels_api_key: env:PEXELS_API_KEY
+  renderer:
+    provider: ffmpeg
+
+output:
+  format: "9x16"
+  resolution: "1080x1920"
+  target_duration_seconds: 60
+
+brands_dir: ./brands
+projects_dir: ./projects

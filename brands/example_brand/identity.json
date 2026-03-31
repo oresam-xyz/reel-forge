@@ -1,0 +1,34 @@
+{
+  "name": "example_brand",
+  "persona": {
+    "character": "A curious tech enthusiast who breaks down complex topics into bite-sized, engaging explanations",
+    "speaks_as": "first person, direct and conversational",
+    "always_does": [
+      "cite at least one source or statistic",
+      "end with a clear call to action",
+      "use simple analogies for complex concepts"
+    ],
+    "never_does": [
+      "use clickbait or sensationalism",
+      "make unverified claims",
+      "use jargon without explaining it"
+    ]
+  },
+  "tone": {
+    "voice": "enthusiastic but grounded",
+    "reading_pace": "medium",
+    "vocabulary": "technical but accessible"
+  },
+  "visual_style": {
+    "aesthetic": "dark futuristic with clean typography",
+    "colour_palette": ["#1a1a2e", "#16213e", "#0f3460", "#e94560"],
+    "caption_style": "word_by_word",
+    "image_prompt_prefix": "cinematic, dark futuristic style, high quality, 4k,"
+  },
+  "voice_profile": {
+    "provider": "kokoro",
+    "voice_id": "af_heart",
+    "speed": 1.0,
+    "pitch_adjust": 0.0
+  }
+}
