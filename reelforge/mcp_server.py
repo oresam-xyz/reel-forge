@@ -437,5 +437,130 @@ def approve_plan(project_id: str, approved: bool, feedback: str = "") -> str:
     })
 
 
+@mcp.tool()
+def reset_phases(project_id: str, from_phase: str) -> str:
+    """Reset a project's pipeline from a given phase onward so it can be re-run.
+
+    All phases from `from_phase` to the end are set back to pending.
+    Use this before run_pipeline to reproduce assets, re-render, regenerate the
+    plan, etc.
+
+    Valid phase names: research, planning, review, script, assets, render.
+    """
+    from reelforge.agent.project import PHASES, Project
+    from reelforge.providers.base import PhaseStatus
+
+    _, projects_dir = _get_dirs()
+    project = Project.load(projects_dir / project_id)
+
+    if from_phase not in PHASES:
+        return json.dumps({"error": f"Unknown phase '{from_phase}'. Valid: {PHASES}"})
+
+    start_idx = PHASES.index(from_phase)
+    reset = []
+    for phase_name in PHASES[start_idx:]:
+        project.state.phases[phase_name].status = PhaseStatus.PENDING
+        project.state.phases[phase_name].completed_at = None
+        project.state.phases[phase_name].error = None
+        reset.append(phase_name)
+
+    project.state.current_phase = from_phase
+    project.save_state()
+
+    return json.dumps({
+        "status": "reset",
+        "project_id": project_id,
+        "from_phase": from_phase,
+        "reset_phases": reset,
+        "message": f"Phases reset. Call run_pipeline to continue from '{from_phase}'.",
+    })
+
+
+@mcp.tool()
+def get_script(project_id: str) -> str:
+    """Get the generated script for a project. Available after the script phase completes."""
+    from reelforge.agent.project import Project
+
+    _, projects_dir = _get_dirs()
+    project = Project.load(projects_dir / project_id)
+
+    script = project.load_script()
+    return json.dumps({
+        "project_id": project_id,
+        "title": script.title,
+        "segments": [
+            {
+                "segment_id": seg.segment_id,
+                "narration": seg.narration,
+                "visual_prompt": seg.visual_prompt,
+                "duration_seconds": seg.duration_seconds,
+            }
+            for seg in script.segments
+        ],
+        "total_duration": script.total_duration,
+    })
+
+
+@mcp.tool()
+def update_script(
+    project_id: str,
+    segment_id: int = -1,
+    narration: str = "",
+    visual_prompt: str = "",
+    duration_seconds: float = 0,
+    title: str = "",
+) -> str:
+    """Update a specific segment in the script, or the title.
+
+    Pass segment_id to update a segment. Only provided fields are changed.
+    Pass title to update the script title.
+    After updating, use reset_phases(from_phase="assets") then run_pipeline
+    to regenerate the video with the new script.
+    """
+    from reelforge.agent.project import Project
+
+    _, projects_dir = _get_dirs()
+    project = Project.load(projects_dir / project_id)
+    script = project.load_script()
+
+    if title:
+        script.title = title
+
+    if segment_id >= 0:
+        if segment_id >= len(script.segments):
+            return json.dumps({
+                "error": f"segment_id {segment_id} out of range (0-{len(script.segments) - 1})"
+            })
+
+        seg = script.segments[segment_id]
+        if narration:
+            seg.narration = narration
+        if visual_prompt:
+            seg.visual_prompt = visual_prompt
+        if duration_seconds > 0:
+            seg.duration_seconds = duration_seconds
+
+        # Recalculate total duration
+        script.total_duration = sum(s.duration_seconds for s in script.segments)
+
+    project.save_script(script)
+
+    return json.dumps({
+        "status": "updated",
+        "project_id": project_id,
+        "title": script.title,
+        "segments": [
+            {
+                "segment_id": seg.segment_id,
+                "narration": seg.narration,
+                "visual_prompt": seg.visual_prompt,
+                "duration_seconds": seg.duration_seconds,
+            }
+            for seg in script.segments
+        ],
+        "total_duration": script.total_duration,
+    })
+
+
 if __name__ == "__main__":
     mcp.run()
