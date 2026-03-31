@@ -108,3 +108,12 @@ def run(project: Project, brand: BrandIdentity, providers: Providers) -> None:
         shutil.move(output_path, final_path)
 
     logger.info("Video rendered: %s", final_path)
+
+    # Compress with H.265 via PyAV
+    try:
+        from reelforge.providers.renderer.compress import compress_video
+        compress_video(str(final_path))
+    except ImportError:
+        logger.warning("PyAV not installed — skipping H.265 compression (pip install av)")
+    except Exception as e:
+        logger.warning("Compression failed, keeping original: %s", e)

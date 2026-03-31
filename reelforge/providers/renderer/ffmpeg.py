@@ -89,7 +89,8 @@ class FFmpegRenderer(RendererProvider):
             ),
             "-t", str(duration),
             "-c:v", "libx264",
-            "-preset", "fast",
+            "-preset", "medium",
+            "-crf", "23",
             "-pix_fmt", "yuv420p",
             output_path,
         ]
@@ -123,7 +124,8 @@ class FFmpegRenderer(RendererProvider):
             ),
             "-t", str(duration),
             "-c:v", "libx264",
-            "-preset", "fast",
+            "-preset", "medium",
+            "-crf", "23",
             "-an",
             "-pix_fmt", "yuv420p",
             output_path,
@@ -252,9 +254,10 @@ class FFmpegRenderer(RendererProvider):
             "-map", "0:v",
             "-map", "1:a",
             "-c:v", "libx264",
-            "-preset", "fast",
+            "-preset", "medium",
+            "-crf", "23",
             "-c:a", "aac",
-            "-b:a", "192k",
+            "-b:a", "128k",
             "-shortest",
         ]
 
