@@ -19,33 +19,34 @@ const segments = (plan: Record<string, unknown>) =>
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-5">
     <!-- Hook -->
-    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-      <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Hook</p>
-      <p class="text-white text-lg font-medium leading-snug">{{ plan.hook }}</p>
+    <div class="card-cyber p-5">
+      <div class="label mb-2">hook</div>
+      <p class="text-lg font-bold leading-snug" style="color: var(--text-primary)">{{ plan.hook }}</p>
     </div>
 
     <!-- Segments -->
-    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
-      <p class="text-xs text-gray-500 uppercase tracking-wide">Segments</p>
+    <div class="card-cyber p-5 space-y-4">
+      <div class="label">segments</div>
       <div
         v-for="(seg, i) in segments(plan)"
         :key="i"
-        class="border-t border-gray-800 pt-3 first:border-0 first:pt-0"
+        class="pt-3 space-y-1"
+        :style="i > 0 ? 'border-top: 1px solid var(--border)' : ''"
       >
-        <p class="text-xs text-gray-500 mb-1">Segment {{ i + 1 }} — {{ seg.duration_seconds }}s</p>
-        <p class="text-gray-200 text-sm mb-1">{{ seg.narration }}</p>
-        <p class="text-gray-500 text-xs italic">Visual: {{ seg.visual_brief }}</p>
+        <div class="label">Seg {{ i + 1 }} — {{ seg.duration_seconds }}s</div>
+        <p class="text-sm" style="color: var(--text-primary)">{{ seg.narration }}</p>
+        <p class="text-xs italic" style="color: var(--text-muted)">{{ seg.visual_brief }}</p>
       </div>
     </div>
 
     <!-- CTA + meta -->
-    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
-      <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">CTA</p>
-      <p class="text-white">{{ plan.cta }}</p>
-      <p class="text-xs text-gray-500 mt-2">
-        Est. duration: {{ plan.estimated_duration_seconds }}s · Tone: {{ plan.tone_guidance }}
+    <div class="card-cyber p-5">
+      <div class="label mb-2">cta</div>
+      <p class="font-semibold" style="color: var(--cyan)">{{ plan.cta }}</p>
+      <p class="text-xs mt-2" style="color: var(--text-muted)">
+        Est. {{ plan.estimated_duration_seconds }}s · {{ plan.tone_guidance }}
       </p>
     </div>
 
@@ -53,24 +54,26 @@ const segments = (plan: Record<string, unknown>) =>
     <div class="space-y-3">
       <textarea
         v-model="feedback"
-        class="w-full bg-gray-900 border border-gray-800 rounded-lg px-4 py-3 text-sm text-gray-200 placeholder-gray-600 resize-none focus:outline-none focus:border-gray-600"
+        class="input-cyber resize-none"
         rows="3"
         placeholder="Changes to make before approving… (optional)"
       />
       <div class="flex gap-3">
         <button
-          class="flex-1 bg-green-700 hover:bg-green-600 disabled:opacity-50 px-4 py-2.5 rounded-lg text-sm font-medium"
+          class="flex-1 py-2.5 rounded-lg text-sm font-bold tracking-wide transition-all"
+          style="background: rgba(57,255,20,0.1); color: var(--neon-green); border: 1px solid rgba(57,255,20,0.3)"
+          :class="{ 'opacity-40 cursor-not-allowed': approving }"
           :disabled="approving"
           @click="emit('approve', feedback)"
         >
           {{ approving ? 'Approving…' : '✓ Approve' }}
         </button>
         <button
-          class="flex-1 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 px-4 py-2.5 rounded-lg text-sm font-medium text-red-400"
+          class="btn-danger flex-1 py-2.5"
           :disabled="rejecting || !feedback.trim()"
           @click="emit('reject', feedback)"
         >
-          {{ rejecting ? 'Rejecting…' : '✗ Reject with feedback' }}
+          {{ rejecting ? 'Rejecting…' : '✗ Reject' }}
         </button>
       </div>
     </div>

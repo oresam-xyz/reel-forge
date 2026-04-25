@@ -30,29 +30,31 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-950 text-white">
+  <div class="min-h-screen text-white">
     <!-- Header -->
-    <header class="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-      <span class="font-bold text-lg tracking-tight">Reel-Forge</span>
-      <div class="flex items-center gap-4">
-        <span class="text-gray-400 text-sm">{{ auth.email }}</span>
-        <button class="text-sm text-gray-400 hover:text-white" @click="handleLogout">Logout</button>
+    <header class="site-header px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="mono text-xs" style="color: var(--cyan)">◈</span>
+        <span class="font-bold text-lg tracking-tight" style="color: var(--text-primary)">Reel-Forge</span>
+      </div>
+      <div class="flex items-center gap-5">
+        <span class="mono text-xs" style="color: var(--text-muted)">{{ auth.email }}</span>
+        <button class="label hover:text-gray-300 transition-colors" @click="handleLogout">[ logout ]</button>
       </div>
     </header>
 
     <main class="max-w-6xl mx-auto px-6 py-8">
-      <div class="flex items-center justify-between mb-6">
-        <h2 class="text-xl font-semibold">Campaigns</h2>
-        <button
-          class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg text-sm font-medium"
-          @click="showNew = true"
-        >
-          + New Campaign
-        </button>
+      <div class="flex items-center justify-between mb-7">
+        <div>
+          <div class="label mb-1">pipeline</div>
+          <h2 class="text-2xl font-bold tracking-tight" style="color: var(--text-primary)">Campaigns</h2>
+        </div>
+        <button class="btn-cyber" @click="showNew = true">+ New Campaign</button>
       </div>
 
-      <div v-if="campaigns.length === 0" class="text-gray-500 text-center py-20">
-        No campaigns yet. Create one to start generating ads.
+      <div v-if="campaigns.length === 0" class="text-center py-24">
+        <div class="mono text-4xl mb-4" style="color: var(--border)">◻</div>
+        <p style="color: var(--text-muted)">No campaigns yet. Create one to start generating ads.</p>
       </div>
 
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

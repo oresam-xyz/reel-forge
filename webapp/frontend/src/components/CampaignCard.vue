@@ -4,22 +4,23 @@ defineProps<{ campaign: Campaign }>()
 </script>
 
 <template>
-  <div class="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-xl p-5 cursor-pointer transition-colors">
+  <div class="card-cyber cursor-pointer p-5">
     <div class="flex items-start justify-between mb-3">
-      <h3 class="font-semibold text-white truncate pr-2">{{ campaign.name }}</h3>
+      <h3 class="font-semibold truncate pr-2" style="color: var(--text-primary)">{{ campaign.name }}</h3>
       <span
         v-if="campaign.brief.vertical"
-        class="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full flex-shrink-0"
+        class="mono flex-shrink-0 text-xs px-2 py-0.5 rounded"
+        style="background: rgba(0,229,255,0.08); color: var(--cyan); border: 1px solid rgba(0,229,255,0.15)"
       >{{ campaign.brief.vertical }}</span>
     </div>
-    <p class="text-sm text-gray-400 line-clamp-2 mb-4">{{ campaign.brief.product }}</p>
-    <div class="flex flex-wrap gap-2 text-xs">
-      <span v-if="campaign.pending" class="bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full">{{ campaign.pending }} pending</span>
-      <span v-if="campaign.running" class="bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full">{{ campaign.running }} running</span>
-      <span v-if="campaign.review_pending" class="bg-amber-900 text-amber-300 px-2 py-0.5 rounded-full">{{ campaign.review_pending }} review</span>
-      <span v-if="campaign.complete" class="bg-green-900 text-green-300 px-2 py-0.5 rounded-full">{{ campaign.complete }} done</span>
-      <span v-if="campaign.failed" class="bg-red-900 text-red-400 px-2 py-0.5 rounded-full">{{ campaign.failed }} failed</span>
+    <p class="text-sm line-clamp-2 mb-4" style="color: var(--text-muted)">{{ campaign.brief.product }}</p>
+    <div class="flex flex-wrap gap-2">
+      <span v-if="campaign.pending"       class="pill pill-pending">{{ campaign.pending }} pending</span>
+      <span v-if="campaign.running"       class="pill pill-running">{{ campaign.running }} running</span>
+      <span v-if="campaign.review_pending" class="pill pill-review">{{ campaign.review_pending }} review</span>
+      <span v-if="campaign.complete"      class="pill pill-complete">{{ campaign.complete }} done</span>
+      <span v-if="campaign.failed"        class="pill pill-failed">{{ campaign.failed }} failed</span>
     </div>
-    <p class="text-xs text-gray-600 mt-3">{{ new Date(campaign.created_at).toLocaleDateString() }}</p>
+    <p class="mono text-xs mt-3" style="color: rgba(100,116,139,0.6)">{{ new Date(campaign.created_at).toLocaleDateString() }}</p>
   </div>
 </template>

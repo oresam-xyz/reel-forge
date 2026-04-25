@@ -33,51 +33,64 @@ async function handleQueued() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-950 text-white">
-    <header class="border-b border-gray-800 px-6 py-4 flex items-center gap-3">
-      <button class="text-gray-400 hover:text-white text-sm" @click="router.push('/')">← Campaigns</button>
-      <span class="text-gray-600">/</span>
-      <span class="font-semibold">{{ campaign?.name }}</span>
+  <div class="min-h-screen text-white">
+    <header class="site-header px-6 py-4 flex items-center gap-3">
+      <button class="label transition-colors hover:text-gray-300" @click="router.push('/')">← Campaigns</button>
+      <span style="color: var(--border)">/</span>
+      <span class="font-semibold" style="color: var(--text-primary)">{{ campaign?.name }}</span>
     </header>
 
     <main v-if="campaign" class="max-w-5xl mx-auto px-6 py-8">
       <!-- Brief card -->
-      <details class="bg-gray-900 border border-gray-800 rounded-xl mb-6 group">
-        <summary class="px-5 py-4 cursor-pointer text-sm font-medium text-gray-300 select-none">
-          Brief — {{ campaign.brief.vertical || 'General' }}
+      <details class="card-cyber mb-6 group">
+        <summary class="px-5 py-4 cursor-pointer select-none flex items-center gap-2"
+          style="color: var(--text-muted)">
+          <span class="mono text-xs" style="color: var(--cyan)">▶</span>
+          <span class="label">Brief — {{ campaign.brief.vertical || 'General' }}</span>
         </summary>
-        <div class="px-5 pb-4 grid grid-cols-2 gap-3 text-sm text-gray-400">
-          <div><span class="text-gray-500">Product</span><p class="text-gray-200 mt-0.5">{{ campaign.brief.product }}</p></div>
-          <div><span class="text-gray-500">Audience</span><p class="text-gray-200 mt-0.5">{{ campaign.brief.audience }}</p></div>
-          <div><span class="text-gray-500">Pain point</span><p class="text-gray-200 mt-0.5">{{ campaign.brief.pain_point }}</p></div>
-          <div><span class="text-gray-500">CTA</span><p class="text-gray-200 mt-0.5">{{ campaign.brief.cta }}</p></div>
+        <div class="px-5 pb-5 grid grid-cols-2 gap-4 text-sm" style="border-top: 1px solid var(--border)">
+          <div class="pt-4">
+            <span class="label">Product</span>
+            <p class="mt-1" style="color: var(--text-primary)">{{ campaign.brief.product }}</p>
+          </div>
+          <div class="pt-4">
+            <span class="label">Audience</span>
+            <p class="mt-1" style="color: var(--text-primary)">{{ campaign.brief.audience }}</p>
+          </div>
+          <div>
+            <span class="label">Pain point</span>
+            <p class="mt-1" style="color: var(--text-primary)">{{ campaign.brief.pain_point }}</p>
+          </div>
+          <div>
+            <span class="label">CTA</span>
+            <p class="mt-1" style="color: var(--cyan)">{{ campaign.brief.cta }}</p>
+          </div>
         </div>
       </details>
 
       <!-- Jobs table -->
       <div class="flex items-center justify-between mb-4">
-        <h3 class="font-semibold text-gray-200">Jobs</h3>
-        <button
-          class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg text-sm font-medium"
-          @click="showQueue = true"
-        >
-          + Queue Hooks
-        </button>
+        <div>
+          <div class="label mb-0.5">queue</div>
+          <h3 class="font-bold text-lg" style="color: var(--text-primary)">Jobs</h3>
+        </div>
+        <button class="btn-cyber" @click="showQueue = true">+ Queue Hooks</button>
       </div>
 
-      <div v-if="campaign.jobs.length === 0" class="text-gray-500 text-sm py-10 text-center">
-        No jobs queued yet.
+      <div v-if="campaign.jobs.length === 0" class="text-center py-16">
+        <div class="mono text-3xl mb-3" style="color: var(--border)">◻</div>
+        <p class="text-sm" style="color: var(--text-muted)">No jobs queued yet.</p>
       </div>
 
-      <div v-else class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-        <table class="w-full text-sm">
-          <thead class="border-b border-gray-800">
-            <tr class="text-gray-500 text-xs uppercase tracking-wide">
-              <th class="px-4 py-3 text-left">Hook</th>
-              <th class="px-4 py-3 text-left">Status</th>
-              <th class="px-4 py-3 text-left">Phase</th>
-              <th class="px-4 py-3 text-left">Created</th>
-              <th class="px-4 py-3"></th>
+      <div v-else class="card-cyber overflow-hidden">
+        <table class="w-full table-cyber">
+          <thead>
+            <tr>
+              <th class="text-left">Hook</th>
+              <th class="text-left">Status</th>
+              <th class="text-left">Phase</th>
+              <th class="text-left">Created</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>

@@ -3,12 +3,12 @@ import type { Job } from '../api/campaigns'
 defineProps<{ job: Job }>()
 defineEmits<{ view: [] }>()
 
-const statusClass: Record<string, string> = {
-  pending: 'bg-gray-800 text-gray-400',
-  running: 'bg-blue-900 text-blue-300',
-  review_pending: 'bg-amber-900 text-amber-300',
-  complete: 'bg-green-900 text-green-300',
-  failed: 'bg-red-900 text-red-400',
+const pillClass: Record<string, string> = {
+  pending:        'pill pill-pending',
+  running:        'pill pill-running',
+  review_pending: 'pill pill-review',
+  complete:       'pill pill-complete',
+  failed:         'pill pill-failed',
 }
 
 function relativeTime(iso: string) {
@@ -23,17 +23,18 @@ function relativeTime(iso: string) {
 </script>
 
 <template>
-  <tr class="border-b border-gray-800 last:border-0 hover:bg-gray-800/40">
-    <td class="px-4 py-3 text-gray-200 max-w-xs truncate">{{ job.angle }}</td>
+  <tr>
+    <td class="px-4 py-3 max-w-xs truncate" style="color: var(--text-primary)">{{ job.angle }}</td>
     <td class="px-4 py-3">
-      <span :class="['text-xs px-2 py-0.5 rounded-full font-medium', statusClass[job.status]]">
-        {{ job.status.replace('_', ' ') }}
-      </span>
+      <span :class="pillClass[job.status]">{{ job.status.replace('_', ' ') }}</span>
     </td>
-    <td class="px-4 py-3 text-gray-400 capitalize">{{ job.phase ?? '—' }}</td>
-    <td class="px-4 py-3 text-gray-500 text-xs">{{ relativeTime(job.created_at) }}</td>
+    <td class="px-4 py-3 mono text-xs capitalize" style="color: var(--text-muted)">{{ job.phase ?? '—' }}</td>
+    <td class="px-4 py-3 mono text-xs" style="color: rgba(100,116,139,0.6)">{{ relativeTime(job.created_at) }}</td>
     <td class="px-4 py-3 text-right">
-      <button class="text-indigo-400 hover:text-indigo-300 text-sm" @click="$emit('view')">View →</button>
+      <button class="text-sm font-semibold transition-colors" style="color: var(--cyan)"
+        onmouseover="this.style.textShadow='0 0 8px rgba(0,229,255,0.6)'"
+        onmouseout="this.style.textShadow='none'"
+        @click="$emit('view')">View →</button>
     </td>
   </tr>
 </template>

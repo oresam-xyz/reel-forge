@@ -7,26 +7,26 @@ defineEmits<{ select: [name: string] }>()
 </script>
 
 <template>
-  <ol class="space-y-1">
+  <ol class="space-y-0.5">
     <li
       v-for="phase in phases"
       :key="phase.name"
-      class="flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors"
+      class="flex items-center gap-3 rounded-lg px-2 py-2 transition-colors"
       :class="{
-        'cursor-pointer hover:bg-gray-800': phase.state === 'complete' || phase.state === 'failed',
-        'bg-gray-800': selected === phase.name,
+        'cursor-pointer': phase.state === 'complete' || phase.state === 'failed',
         'cursor-default': phase.state === 'pending' || phase.state === 'running' || phase.state === 'review',
       }"
+      :style="selected === phase.name ? 'background: rgba(0,229,255,0.07); border-left: 2px solid var(--cyan); padding-left: 10px;' : 'border-left: 2px solid transparent'"
       @click="(phase.state === 'complete' || phase.state === 'failed') && $emit('select', phase.name)"
     >
       <!-- Icon -->
-      <span class="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full text-xs font-bold"
+      <span class="phase-icon"
         :class="{
-          'bg-green-900 text-green-300': phase.state === 'complete',
-          'bg-blue-900 text-blue-300 animate-pulse': phase.state === 'running',
-          'bg-amber-900 text-amber-300': phase.state === 'review',
-          'bg-red-900 text-red-400': phase.state === 'failed',
-          'bg-gray-800 text-gray-600': phase.state === 'pending',
+          'phase-complete': phase.state === 'complete',
+          'phase-running animate-pulse': phase.state === 'running',
+          'phase-review': phase.state === 'review',
+          'phase-failed': phase.state === 'failed',
+          'phase-pending': phase.state === 'pending',
         }"
       >
         <span v-if="phase.state === 'complete'">✓</span>
@@ -36,18 +36,18 @@ defineEmits<{ select: [name: string] }>()
         <span v-else>○</span>
       </span>
       <!-- Label -->
-      <span class="text-sm capitalize"
-        :class="{
-          'text-green-300': phase.state === 'complete' && selected !== phase.name,
-          'text-white font-medium': phase.state === 'complete' && selected === phase.name,
-          'text-blue-300 font-medium': phase.state === 'running',
-          'text-amber-300 font-medium': phase.state === 'review',
-          'text-red-400': phase.state === 'failed',
-          'text-gray-600': phase.state === 'pending',
+      <span class="text-sm capitalize font-semibold tracking-wide"
+        :style="{
+          color: phase.state === 'complete' ? 'var(--neon-green)'
+               : phase.state === 'running'  ? 'var(--cyan)'
+               : phase.state === 'review'   ? 'var(--amber)'
+               : phase.state === 'failed'   ? 'var(--red)'
+               : 'rgba(100,116,139,0.5)',
         }"
       >{{ phase.name }}</span>
-      <!-- chevron hint for clickable phases -->
-      <span v-if="phase.state === 'complete' || phase.state === 'failed'" class="ml-auto text-gray-600 text-xs">›</span>
+      <!-- chevron for clickable -->
+      <span v-if="phase.state === 'complete' || phase.state === 'failed'"
+        class="ml-auto text-xs" style="color: var(--text-muted)">›</span>
     </li>
   </ol>
 </template>
