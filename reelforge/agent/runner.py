@@ -56,6 +56,9 @@ def _get_provider_class(category: str, provider_name: str) -> type:
         elif provider_name == "claude":
             from reelforge.providers.llm.claude import ClaudeLLM
             return ClaudeLLM
+        elif provider_name == "openrouter":
+            from reelforge.providers.llm.openrouter import OpenRouterLLM
+            return OpenRouterLLM
     elif category == "tts":
         if provider_name == "kokoro":
             from reelforge.providers.tts.kokoro import KokoroTTS
@@ -63,6 +66,9 @@ def _get_provider_class(category: str, provider_name: str) -> type:
         elif provider_name == "coqui":
             from reelforge.providers.tts.coqui import CoquiTTS
             return CoquiTTS
+        elif provider_name == "elevenlabs":
+            from reelforge.providers.tts.elevenlabs import ElevenLabsTTS
+            return ElevenLabsTTS
     elif category == "visuals":
         if provider_name == "flux":
             from reelforge.providers.visuals.flux import FluxVisual
@@ -76,6 +82,9 @@ def _get_provider_class(category: str, provider_name: str) -> type:
         elif provider_name == "pexels":
             from reelforge.providers.visuals.pexels import PexelsVisual
             return PexelsVisual
+        elif provider_name in ("falai", "fal", "cogvideox-5b", "kling-1.6", "wan-t2v"):
+            from reelforge.providers.visuals.falai import FalAIVisual
+            return FalAIVisual
     elif category == "renderer":
         if provider_name == "ffmpeg":
             from reelforge.providers.renderer.ffmpeg import FFmpegRenderer

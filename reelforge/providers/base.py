@@ -48,6 +48,8 @@ class BrandIdentityData(BaseModel):
     tone: Tone
     visual_style: VisualStyle = Field(default_factory=VisualStyle)
     voice_profile: VoiceProfile = Field(default_factory=VoiceProfile)
+    # text → spoken pronunciation map; captions show the original text
+    pronunciations: dict[str, str] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

@@ -23,11 +23,16 @@ def _generate_voice(project: Project, brand: BrandIdentity, providers: Providers
     script = project.load_script()
     full_narration = " ".join(seg.narration for seg in script.segments)
 
+    # Apply brand pronunciation substitutions (display text → spoken text for TTS)
+    tts_text = full_narration
+    for display, spoken in brand.data.pronunciations.items():
+        tts_text = tts_text.replace(display, spoken)
+
     voice_profile = brand.data.voice_profile.model_dump()
     voice_profile["output_path"] = str(audio_path)
 
-    logger.info("Generating voice audio (%d characters)", len(full_narration))
-    audio_asset = providers.tts.synthesise(full_narration, voice_profile)
+    logger.info("Generating voice audio (%d characters)", len(tts_text))
+    audio_asset = providers.tts.synthesise(tts_text, voice_profile)
     logger.info("Voice audio saved: %s", audio_asset.path)
     return audio_asset.path
 

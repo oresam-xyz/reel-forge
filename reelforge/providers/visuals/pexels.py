@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 import httpx
@@ -12,6 +13,33 @@ from reelforge.providers.base import SegmentBrief, VisualAsset, VisualProvider
 logger = logging.getLogger(__name__)
 
 PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search"
+
+# Words that are visual-direction jargon, not useful as Pexels search terms
+_DIRECTION_WORDS = {
+    "split", "screen", "cut", "close-up", "closeup", "wide", "shot", "montage",
+    "overlay", "text", "animation", "fade", "zoom", "pan", "tilt", "b-roll",
+    "broll", "shows", "showing", "depicting", "scene", "visual", "footage",
+    "left", "right", "side", "foreground", "background", "transition",
+    "appears", "appearing", "represented", "symbolized", "displayed",
+}
+
+
+def _pexels_query(visual_brief: str) -> str:
+    """Extract a clean 4-6 word Pexels search query from a visual brief."""
+    # Take only the first sentence or clause
+    first = re.split(r"[.!?;]", visual_brief)[0]
+    # Strip any "Directive: content" prefix
+    if ":" in first:
+        first = first.split(":", 1)[-1]
+    # Remove parenthetical asides
+    first = re.sub(r"\([^)]*\)", "", first)
+    # Tokenise and drop direction jargon + short filler words
+    words = re.findall(r"[a-zA-Z]+", first.lower())
+    filtered = [
+        w for w in words
+        if w not in _DIRECTION_WORDS and len(w) > 2
+    ]
+    return " ".join(filtered[:5])
 
 
 class PexelsVisual(VisualProvider):
@@ -45,7 +73,7 @@ class PexelsVisual(VisualProvider):
 
         assets = []
         for seg in segments:
-            query = seg.visual_brief[:100]  # Pexels query limit
+            query = _pexels_query(seg.visual_brief) or seg.visual_brief[:60]
             output_path = output_dir / f"img_{seg.segment_id:02d}.png"
 
             logger.info("Searching Pexels for segment %d: %s", seg.segment_id, query[:60])

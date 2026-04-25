@@ -67,6 +67,16 @@ def run(project: Project, brand: BrandIdentity, providers: Providers) -> None:
 
     # Generate word-level captions from audio
     captions = _generate_captions(audio_path)
+
+    # Reverse brand pronunciation substitutions so captions show display text
+    if brand.data.pronunciations:
+        # Build a reverse map: spoken → display, normalised to lowercase for matching
+        reverse = {spoken.lower(): display for display, spoken in brand.data.pronunciations.items()}
+        for word in captions.words:
+            w = word.word.strip().lower()
+            if w in reverse:
+                word.word = word.word.replace(w, reverse[w]).replace(w.capitalize(), reverse[w])
+
     project.save_captions(captions)
 
     # Collect visual assets
