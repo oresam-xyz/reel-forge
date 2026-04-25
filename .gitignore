@@ -26,3 +26,4 @@ webapp/.env
 webapp/frontend/node_modules/
 webapp/frontend/dist/
 webapp/frontend/.vite/
+.claude/deploy.json
