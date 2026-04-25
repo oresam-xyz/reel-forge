@@ -20,6 +20,9 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "change-me-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 24
 
+_raw = os.environ.get("ALLOWED_EMAILS", "")
+ALLOWED_EMAILS: set[str] = {e.strip().lower() for e in _raw.split(",") if e.strip()} if _raw else set()
+
 _oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 
@@ -60,7 +63,10 @@ def exchange_code_for_user(code: str, redirect_uri: str) -> dict:
         google_requests.Request(),
         GOOGLE_CLIENT_ID,
     )
-    return {"google_sub": info["sub"], "email": info["email"], "name": info.get("name", "")}
+    email = info["email"]
+    if ALLOWED_EMAILS and email.lower() not in ALLOWED_EMAILS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account not authorised")
+    return {"google_sub": info["sub"], "email": email, "name": info.get("name", "")}
 
 
 def upsert_user(user_info: dict) -> int:
