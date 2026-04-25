@@ -29,6 +29,10 @@ function relativeTime(iso: string) {
       <span :class="pillClass[job.status]">{{ job.status.replace('_', ' ') }}</span>
     </td>
     <td class="px-4 py-3 mono text-xs capitalize" style="color: var(--text-muted)">{{ job.phase ?? '—' }}</td>
+    <td class="px-4 py-3 mono text-xs">
+      <span v-if="job.cost_usd != null && job.cost_usd > 0" style="color: #22d3ee; font-family: monospace">${{ job.cost_usd.toFixed(4) }}</span>
+      <span v-else style="color: rgba(100,116,139,0.5)">—</span>
+    </td>
     <td class="px-4 py-3 mono text-xs" style="color: rgba(100,116,139,0.6)">{{ relativeTime(job.created_at) }}</td>
     <td class="px-4 py-3 text-right">
       <button class="text-sm font-semibold transition-colors" style="color: var(--cyan)"

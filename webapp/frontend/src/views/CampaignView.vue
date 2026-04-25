@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getCampaign, type CampaignDetail } from '../api/campaigns'
+import { getCampaign, deleteCampaign, type CampaignDetail } from '../api/campaigns'
 import JobRow from '../components/JobRow.vue'
 import QueueAnglesModal from '../components/QueueAnglesModal.vue'
 
@@ -10,6 +10,7 @@ const router = useRouter()
 const id = Number(route.params.id)
 const campaign = ref<CampaignDetail | null>(null)
 const showQueue = ref(false)
+const deleting = ref(false)
 let pollInterval: ReturnType<typeof setInterval>
 
 async function load() {
@@ -30,6 +31,17 @@ async function handleQueued() {
   showQueue.value = false
   await load()
 }
+
+async function handleDelete() {
+  if (!confirm('Delete this campaign and all its jobs?')) return
+  deleting.value = true
+  try {
+    await deleteCampaign(id)
+    router.push('/')
+  } finally {
+    deleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -38,6 +50,18 @@ async function handleQueued() {
       <button class="label transition-colors hover:text-gray-300" @click="router.push('/')">← Campaigns</button>
       <span style="color: var(--border)">/</span>
       <span class="font-semibold" style="color: var(--text-primary)">{{ campaign?.name }}</span>
+      <div class="ml-auto">
+        <button
+          class="mono text-xs transition-colors"
+          :disabled="deleting"
+          :style="deleting
+            ? 'color: var(--red); opacity: 0.5; cursor: not-allowed'
+            : 'color: var(--red); opacity: 0.7'"
+          @mouseover="(e) => { if (!deleting) (e.target as HTMLElement).style.opacity = '1' }"
+          @mouseout="(e) => { if (!deleting) (e.target as HTMLElement).style.opacity = '0.7' }"
+          @click="handleDelete"
+        >{{ deleting ? '[ deleting… ]' : '[ delete campaign ]' }}</button>
+      </div>
     </header>
 
     <main v-if="campaign" class="max-w-5xl mx-auto px-6 py-8">
@@ -89,6 +113,7 @@ async function handleQueued() {
               <th class="text-left">Hook</th>
               <th class="text-left">Status</th>
               <th class="text-left">Phase</th>
+              <th class="text-left">Cost</th>
               <th class="text-left">Created</th>
               <th></th>
             </tr>
@@ -102,6 +127,12 @@ async function handleQueued() {
             />
           </tbody>
         </table>
+      </div>
+
+      <div v-if="campaign.total_cost_usd != null && campaign.total_cost_usd > 0"
+        class="mt-3 text-right">
+        <span class="label">Total production cost:&nbsp;</span>
+        <span class="mono text-xs" style="color: #22d3ee; font-family: monospace">${{ campaign.total_cost_usd.toFixed(4) }}</span>
       </div>
     </main>
 

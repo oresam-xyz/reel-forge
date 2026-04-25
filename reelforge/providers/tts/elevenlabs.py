@@ -29,6 +29,7 @@ class ElevenLabsTTS(TTSProvider):
         self._api_key = api_key
         self._default_voice_id = voice_id
         self._client = httpx.Client(timeout=60.0)
+        self.cost_usd: float = 0.0
 
     def synthesise(self, text: str, voice_profile: dict) -> AudioAsset:
         voice_id = voice_profile.get("voice_id") or self._default_voice_id
@@ -55,6 +56,7 @@ class ElevenLabsTTS(TTSProvider):
         if not resp.is_success:
             logger.error("ElevenLabs error %d: %s", resp.status_code, resp.text[:300])
         resp.raise_for_status()
+        self.cost_usd += len(text) * 0.00030  # $0.30 per 1000 chars
 
         # Save MP3 to temp, then convert to WAV at output_path if requested
         tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)

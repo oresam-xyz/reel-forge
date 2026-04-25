@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { listCampaigns, createCampaign, type Campaign, type Brief } from '../api/campaigns'
 import { useAuthStore } from '../stores/auth'
-import { useRouter } from 'vue-router'
+import { useRouter, RouterLink } from 'vue-router'
 import CampaignCard from '../components/CampaignCard.vue'
 import NewCampaignModal from '../components/NewCampaignModal.vue'
 
@@ -15,7 +15,7 @@ async function load() {
   campaigns.value = await listCampaigns()
 }
 
-async function handleCreate(data: { name: string; brief: Brief; brand_name: string }) {
+async function handleCreate(data: { name: string; brief: Brief; brand_name: string; auto_approve: boolean; visual_model: string; target_duration: number }) {
   await createCampaign(data)
   showNew.value = false
   await load()
@@ -39,6 +39,7 @@ onMounted(load)
       </div>
       <div class="flex items-center gap-5">
         <span class="mono text-xs" style="color: var(--text-muted)">{{ auth.email }}</span>
+        <RouterLink to="/settings" class="label hover:text-gray-300 transition-colors">[ settings ]</RouterLink>
         <button class="label hover:text-gray-300 transition-colors" @click="handleLogout">[ logout ]</button>
       </div>
     </header>

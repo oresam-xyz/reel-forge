@@ -1,17 +1,36 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { reactive, onMounted } from 'vue'
 import type { Brief } from '../api/campaigns'
+import { getMe } from '../api/user'
+import { listBrands } from '../api/brands'
 
 const emit = defineEmits<{
   close: []
-  submit: [data: { name: string; brief: Brief; brand_name: string }]
+  submit: [data: { name: string; brief: Brief; brand_name: string; auto_approve: boolean; visual_model: string; target_duration: number }]
 }>()
+
+const MODELS = [
+  { value: 'cogvideox-5b',      label: 'CogVideoX 5B · $0.020/s' },
+  { value: 'kling-1.6',         label: 'Kling 1.6 · $0.030/s' },
+  { value: 'kling-2.0-master',  label: 'Kling 2.0 Master · $0.040/s' },
+  { value: 'kling-2.1-master',  label: 'Kling 2.1 Master · $0.050/s' },
+  { value: 'kling-2.6-pro',     label: 'Kling 2.6 Pro · $0.070/s' },
+  { value: 'kling-3-pro',       label: 'Kling 3 Pro · $0.224/s' },
+  { value: 'wan-t2v',           label: 'Wan T2V · $0.030/s' },
+  { value: 'wan-2.2',           label: 'Wan 2.2 · $0.100/s' },
+  { value: 'veo-3.1',           label: 'Veo 3.1 · $0.200/s' },
+  { value: 'ltx-video',         label: 'LTX Video · $0.040/s' },
+  { value: 'seedance-2',        label: 'Seedance 2 · $0.300/s' },
+]
 
 const form = reactive({
   name: '',
   brand_name: 'oresam',
+  auto_approve: false,
+  visual_model: 'kling-2.6-pro',
+  target_duration: 30,
   brief: {
-    product: 'Custom software builds — websites, AI agents, and automations by Samuel O\'Regan',
+    product: "Custom software builds — websites, AI agents, and automations by Samuel O'Regan",
     audience: '',
     pain_point: '',
     cta: 'Visit oresam.xyz to get a quote',
@@ -20,8 +39,28 @@ const form = reactive({
   } as Brief,
 })
 
+const brands = reactive<string[]>([])
+
+onMounted(async () => {
+  try {
+    const [me, brandList] = await Promise.all([getMe(), listBrands()])
+    if (me.settings?.visual_model) form.visual_model = me.settings.visual_model
+    if (me.settings?.target_duration) form.target_duration = me.settings.target_duration
+    brands.push(...brandList)
+  } catch {
+    // non-fatal — defaults remain
+  }
+})
+
 function submit() {
-  emit('submit', { name: form.name, brand_name: form.brand_name, brief: { ...form.brief } })
+  emit('submit', {
+    name: form.name,
+    brand_name: form.brand_name,
+    brief: { ...form.brief },
+    auto_approve: form.auto_approve,
+    visual_model: form.visual_model,
+    target_duration: form.target_duration,
+  })
 }
 </script>
 
@@ -92,8 +131,53 @@ function submit() {
 
         <label class="block">
           <span class="label">Brand</span>
-          <input v-model="form.brand_name" class="input-cyber mt-1" placeholder="oresam" />
+          <select v-if="brands.length" v-model="form.brand_name" class="input-cyber mt-1">
+            <option v-for="b in brands" :key="b" :value="b">{{ b }}</option>
+          </select>
+          <input v-else v-model="form.brand_name" class="input-cyber mt-1" placeholder="oresam" />
         </label>
+
+        <label class="block">
+          <span class="label">Visual model</span>
+          <select v-model="form.visual_model" class="input-cyber mt-1">
+            <option v-for="m in MODELS" :key="m.value" :value="m.value">{{ m.label }}</option>
+          </select>
+        </label>
+
+        <label class="block">
+          <span class="label">Target duration</span>
+          <select v-model.number="form.target_duration" class="input-cyber mt-1">
+            <option :value="15">15 seconds</option>
+            <option :value="30">30 seconds</option>
+            <option :value="60">60 seconds</option>
+            <option :value="90">90 seconds</option>
+          </select>
+        </label>
+
+        <!-- Auto-approve toggle -->
+        <div class="flex items-start gap-3 rounded-lg px-3 py-3"
+          style="background: rgba(0,0,0,0.3); border: 1px solid var(--border)">
+          <button
+            type="button"
+            class="relative flex-shrink-0 w-10 h-5 rounded-full transition-colors duration-200 focus:outline-none mt-0.5"
+            :style="form.auto_approve
+              ? 'background: rgba(0,229,255,0.25); border: 1px solid var(--cyan); box-shadow: 0 0 8px rgba(0,229,255,0.3)'
+              : 'background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12)'"
+            @click="form.auto_approve = !form.auto_approve"
+            :aria-pressed="form.auto_approve"
+          >
+            <span
+              class="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded-full transition-transform duration-200"
+              :style="form.auto_approve
+                ? 'transform: translateX(20px); background: var(--cyan)'
+                : 'transform: translateX(0); background: var(--text-muted)'"
+            />
+          </button>
+          <div class="min-w-0">
+            <div class="text-sm font-semibold" style="color: var(--text-primary)">Auto-approve plan</div>
+            <div class="text-xs mt-0.5" style="color: var(--text-muted)">(skip review, go straight to assets)</div>
+          </div>
+        </div>
       </div>
 
       <div class="flex gap-3 pt-2">

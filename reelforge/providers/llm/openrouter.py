@@ -14,6 +14,14 @@ logger = logging.getLogger(__name__)
 _BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_JSON_RETRIES = 2
 
+_TOKEN_PRICES = {
+    "anthropic/claude-haiku-4-5": (0.80, 4.00),
+    "anthropic/claude-haiku-4-5-20251001": (0.80, 4.00),
+    "anthropic/claude-sonnet-4-5": (3.00, 15.00),
+    "anthropic/claude-opus-4-5": (15.00, 75.00),
+}
+_DEFAULT_TOKEN_PRICE = (1.00, 5.00)
+
 
 class OpenRouterLLM(LLMProvider):
     """LLM provider using the OpenRouter API (OpenAI-compatible)."""
@@ -31,6 +39,7 @@ class OpenRouterLLM(LLMProvider):
             "Content-Type": "application/json",
         }
         self._client = httpx.Client(timeout=120.0)
+        self.cost_usd: float = 0.0
 
     def _chat(self, messages: list[dict], json_mode: bool = False) -> str:
         payload: dict = {"model": self.model, "messages": messages}
@@ -40,7 +49,14 @@ class OpenRouterLLM(LLMProvider):
         logger.debug("OpenRouter request: model=%s, messages=%d", self.model, len(messages))
         resp = self._client.post(_BASE_URL, json=payload, headers=self._headers)
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        data = resp.json()
+        usage = data.get("usage", {})
+        if usage:
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+            input_price, output_price = _TOKEN_PRICES.get(self.model, _DEFAULT_TOKEN_PRICE)
+            self.cost_usd += (input_tokens * input_price + output_tokens * output_price) / 1_000_000
+        return data["choices"][0]["message"]["content"]
 
     def generate(self, prompt: str, system: str = "") -> str:
         messages = []

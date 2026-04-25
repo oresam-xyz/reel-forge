@@ -27,6 +27,9 @@ class CampaignIn(BaseModel):
     name: str
     brief: BriefIn
     brand_name: str
+    auto_approve: bool = False
+    visual_model: str = "kling-2.6-pro"
+    target_duration: int = 30
 
 
 class QueueJobsIn(BaseModel):
@@ -39,11 +42,11 @@ def create_campaign(body: CampaignIn, user=Depends(get_current_user)):
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO campaigns (user_id, name, brief, brand_name)
-                VALUES (%s, %s, %s::jsonb, %s)
-                RETURNING id, name, brief, brand_name, created_at
+                INSERT INTO campaigns (user_id, name, brief, brand_name, auto_approve, visual_model, target_duration)
+                VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s)
+                RETURNING id, name, brief, brand_name, auto_approve, visual_model, target_duration, created_at
                 """,
-                (user["id"], body.name, body.brief.model_dump_json(), body.brand_name),
+                (user["id"], body.name, body.brief.model_dump_json(), body.brand_name, body.auto_approve, body.visual_model, body.target_duration),
             )
             row = dict(cur.fetchone())
         conn.commit()
@@ -56,12 +59,13 @@ def list_campaigns(user=Depends(get_current_user)):
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT c.id, c.name, c.brief, c.brand_name, c.created_at,
+                SELECT c.id, c.name, c.brief, c.brand_name, c.auto_approve, c.visual_model, c.target_duration, c.created_at,
                     COUNT(j.id) FILTER (WHERE j.status = 'pending')       AS pending,
                     COUNT(j.id) FILTER (WHERE j.status = 'running')       AS running,
                     COUNT(j.id) FILTER (WHERE j.status = 'review_pending') AS review_pending,
                     COUNT(j.id) FILTER (WHERE j.status = 'complete')      AS complete,
-                    COUNT(j.id) FILTER (WHERE j.status = 'failed')        AS failed
+                    COUNT(j.id) FILTER (WHERE j.status = 'failed')        AS failed,
+                    SUM(j.cost_usd)                                        AS total_cost_usd
                 FROM campaigns c
                 LEFT JOIN jobs j ON j.campaign_id = c.id
                 WHERE c.user_id = %s
@@ -78,7 +82,7 @@ def get_campaign(campaign_id: int, user=Depends(get_current_user)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT * FROM campaigns WHERE id = %s AND user_id = %s",
+                "SELECT id, name, brief, brand_name, auto_approve, visual_model, target_duration, created_at FROM campaigns WHERE id = %s AND user_id = %s",
                 (campaign_id, user["id"]),
             )
             campaign = cur.fetchone()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import glob
+import json
 import os
 from pathlib import Path
 
@@ -117,6 +119,173 @@ def retry_job(job_id: int, user=Depends(get_current_user)):
     return {"ok": True}
 
 
+_PHASE_ORDER = ["research", "planning", "review", "script", "assets", "render"]
+
+_PHASE_ARTIFACTS: dict[str, list[str]] = {
+    "planning": ["plan.json"],
+    "script": ["assets/script.json"],
+    "assets": [
+        "assets/audio.wav",
+        "assets/captions.json",
+    ],
+    "render": ["output.mp4"],
+}
+
+
+def _delete_phase_artifacts(project_dir: Path, phase: str) -> None:
+    """Delete disk artefacts for a single phase."""
+    for rel in _PHASE_ARTIFACTS.get(phase, []):
+        p = project_dir / rel
+        if p.exists():
+            p.unlink()
+    # glob patterns for assets phase
+    if phase == "assets":
+        for pattern in ("assets/clip_*.mp4", "assets/img_*.png"):
+            for f in project_dir.glob(pattern):
+                f.unlink()
+
+
+def _reset_phases_from(project_dir: Path, from_phase: str) -> None:
+    """Reset from_phase and all subsequent phases in state.json and delete artefacts."""
+    from reelforge.agent.project import Project
+    from reelforge.providers.base import PhaseStatus
+
+    project = Project.load(project_dir)
+    idx = _PHASE_ORDER.index(from_phase)
+    for phase in _PHASE_ORDER[idx:]:
+        project.state.phases[phase].status = PhaseStatus.PENDING
+        project.state.phases[phase].completed_at = None
+        project.state.phases[phase].error = None
+        _delete_phase_artifacts(project_dir, phase)
+    project.state.current_phase = from_phase
+    project.save_state()
+
+
+class ResetIn(BaseModel):
+    phase: str
+
+
+@router.post("/{job_id}/reset")
+def reset_job(job_id: int, body: ResetIn, user=Depends(get_current_user)):
+    valid_phases = {"planning", "script", "assets", "render"}
+    if body.phase not in valid_phases:
+        raise HTTPException(status_code=422, detail=f"phase must be one of {sorted(valid_phases)}")
+
+    job = _get_job_for_user(job_id, user)
+    if job["status"] == "running":
+        raise HTTPException(status_code=409, detail="Job is currently running")
+
+    project_id = job.get("project_id")
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project not yet created")
+
+    project_dir = PROJECTS_ROOT / project_id
+    _reset_phases_from(project_dir, body.phase)
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE jobs SET status = 'pending', error = NULL WHERE id = %s",
+                (job_id,),
+            )
+        conn.commit()
+
+    return {"ok": True}
+
+
+class SegmentPatch(BaseModel):
+    segment_id: int
+    narration: str | None = None
+    visual_prompt: str | None = None
+    duration_seconds: float | None = None
+
+
+class ScriptPatchIn(BaseModel):
+    segments: list[SegmentPatch]
+
+
+@router.patch("/{job_id}/script")
+def patch_script(job_id: int, body: ScriptPatchIn, user=Depends(get_current_user)):
+    job = _get_job_for_user(job_id, user)
+    if job["status"] == "running":
+        raise HTTPException(status_code=409, detail="Job is currently running")
+
+    project_id = job.get("project_id")
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project not yet created")
+
+    script_path = PROJECTS_ROOT / project_id / "assets" / "script.json"
+    if not script_path.exists():
+        raise HTTPException(status_code=404, detail="script.json not found")
+
+    script = json.loads(script_path.read_text())
+
+    patch_map = {p.segment_id: p for p in body.segments}
+    for seg in script.get("segments", []):
+        sid = seg.get("segment_id")
+        if sid in patch_map:
+            patch = patch_map[sid]
+            if patch.narration is not None:
+                seg["narration"] = patch.narration
+            if patch.visual_prompt is not None:
+                seg["visual_prompt"] = patch.visual_prompt
+            if patch.duration_seconds is not None:
+                seg["duration_seconds"] = patch.duration_seconds
+
+    # Recalculate total_duration
+    script["total_duration"] = sum(
+        s.get("duration_seconds", 0) for s in script.get("segments", [])
+    )
+
+    script_path.write_text(json.dumps(script, indent=2))
+
+    # Reset assets + render phases
+    _reset_phases_from(PROJECTS_ROOT / project_id, "assets")
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE jobs SET status = 'pending', error = NULL WHERE id = %s",
+                (job_id,),
+            )
+        conn.commit()
+
+    return {"ok": True}
+
+
+class SplitIn(BaseModel):
+    max_size_mb: float = 10.0
+
+
+@router.post("/{job_id}/split")
+def split_job_video(job_id: int, body: SplitIn, user=Depends(get_current_user)):
+    job = _get_job_for_user(job_id, user)
+    if job["status"] != "complete":
+        raise HTTPException(status_code=409, detail="Job is not complete")
+
+    project_id = job.get("project_id")
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project not yet created")
+
+    output_path = PROJECTS_ROOT / project_id / "output.mp4"
+    if not output_path.exists():
+        raise HTTPException(status_code=404, detail="output.mp4 not found")
+
+    from reelforge.providers.renderer.split import split_video
+    parts = split_video(str(output_path), max_size_mb=body.max_size_mb)
+
+    result = []
+    for p in parts:
+        path = Path(p)
+        result.append({
+            "filename": path.name,
+            "size_mb": round(path.stat().st_size / (1024 * 1024), 2),
+            "path": p,
+        })
+
+    return {"parts": result, "num_parts": len(result)}
+
+
 def _get_user_token_or_query(request: Request, token: str | None = None) -> dict:
     """Auth for media endpoints — accepts JWT via header or ?token= query param."""
     from webapp.api.auth import decode_token
@@ -181,6 +350,39 @@ def get_phase_data(job_id: int, phase_name: str, user=Depends(get_current_user))
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown phase: {phase_name}")
+
+
+@router.get("/{job_id}/files/{filename}")
+def get_project_file(job_id: int, filename: str, request: Request, token: str | None = None):
+    user = _get_user_token_or_query(request, token)
+    job = _get_job_for_user(job_id, user)
+
+    if ".." in filename or "/" in filename or not filename.endswith(".mp4"):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    project_id = job.get("project_id")
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project not yet created")
+
+    path = PROJECTS_ROOT / project_id / filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    file_size = path.stat().st_size
+
+    def iter_full():
+        with open(path, "rb") as f:
+            while chunk := f.read(65536):
+                yield chunk
+
+    return StreamingResponse(
+        iter_full(),
+        media_type="video/mp4",
+        headers={
+            "Content-Length": str(file_size),
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
 
 
 @router.get("/{job_id}/video")

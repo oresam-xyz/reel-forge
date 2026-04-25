@@ -15,13 +15,41 @@ logger = logging.getLogger(__name__)
 
 # fal.ai model IDs
 _MODELS = {
+    # CogVideoX
     "cogvideox-5b": "fal-ai/cogvideox-5b",
+    # Kling (newest first)
+    "kling-3-pro": "fal-ai/kling-video/v3/pro/text-to-video",
+    "kling-2.6-pro": "fal-ai/kling-video/v2.6/pro/text-to-video",
+    "kling-2.1-master": "fal-ai/kling-video/v2.1/master/text-to-video",
+    "kling-2.0-master": "fal-ai/kling-video/v2/master/text-to-video",
     "kling-1.6": "fal-ai/kling-video/v1.6/standard/text-to-video",
+    # Wan
+    "wan-2.2": "fal-ai/wan-2.2/text-to-video",
     "wan-t2v": "fal-ai/wan-t2v",
+    # Google Veo
+    "veo-3.1": "fal-ai/veo3.1",
+    # LTX
+    "ltx-video": "fal-ai/ltx-video",
+    # Seedance
+    "seedance-2": "fal-ai/seedance-2/text-to-video",
 }
 
 _FAL_QUEUE_URL = "https://queue.fal.run"
 _FAL_RUN_URL = "https://fal.run"
+
+_PRICES_PER_SECOND = {
+    "fal-ai/cogvideox-5b": 0.020,
+    "fal-ai/kling-video/v1.6/standard/text-to-video": 0.030,
+    "fal-ai/kling-video/v2/master/text-to-video": 0.040,
+    "fal-ai/kling-video/v2.1/master/text-to-video": 0.050,
+    "fal-ai/kling-video/v2.6/pro/text-to-video": 0.070,
+    "fal-ai/kling-video/v3/pro/text-to-video": 0.224,
+    "fal-ai/wan-t2v": 0.030,
+    "fal-ai/wan-2.2/text-to-video": 0.100,
+    "fal-ai/veo3.1": 0.200,
+    "fal-ai/ltx-video": 0.040,
+    "fal-ai/seedance-2/text-to-video": 0.300,
+}
 
 
 class FalAIVisual(VisualProvider):
@@ -50,6 +78,7 @@ class FalAIVisual(VisualProvider):
                 "Content-Type": "application/json",
             },
         )
+        self.cost_usd: float = 0.0
 
     def _generate_clip(self, prompt: str, duration_seconds: float) -> bytes:
         """Submit a text-to-video job and return the raw video bytes."""
@@ -61,13 +90,16 @@ class FalAIVisual(VisualProvider):
             "num_inference_steps": self._num_inference_steps,
         }
 
-        # Submit to queue
+        # Submit to queue using full model path
         submit_url = f"{_FAL_QUEUE_URL}/{self._model_id}"
         resp = self._client.post(submit_url, json=payload)
         resp.raise_for_status()
         request_id = resp.json()["request_id"]
-        status_url = f"{_FAL_QUEUE_URL}/{self._model_id}/requests/{request_id}/status"
-        result_url = f"{_FAL_QUEUE_URL}/{self._model_id}/requests/{request_id}"
+        # Status/result use only owner/alias (first two path segments), not the versioned tail
+        parts = self._model_id.split("/")
+        owner_alias = f"{parts[0]}/{parts[1]}"
+        status_url = f"{_FAL_QUEUE_URL}/{owner_alias}/requests/{request_id}/status"
+        result_url = f"{_FAL_QUEUE_URL}/{owner_alias}/requests/{request_id}"
 
         logger.info("fal.ai job submitted: %s (request_id=%s)", self._model_id, request_id)
 
@@ -120,6 +152,8 @@ class FalAIVisual(VisualProvider):
             if output_path.exists() and output_path.stat().st_size > 0:
                 logger.info("Clip already exists, skipping: %s", output_path)
                 assets.append(VisualAsset(path=str(output_path), segment_id=seg.segment_id, type="video"))
+                price = _PRICES_PER_SECOND.get(self._model_id, 0.05)
+                self.cost_usd += seg.duration_seconds * price
                 continue
 
             logger.info(
@@ -132,6 +166,8 @@ class FalAIVisual(VisualProvider):
                 output_path.write_bytes(video_bytes)
                 logger.info("Clip saved: %s (%d bytes)", output_path, len(video_bytes))
                 assets.append(VisualAsset(path=str(output_path), segment_id=seg.segment_id, type="video"))
+                price = _PRICES_PER_SECOND.get(self._model_id, 0.05)
+                self.cost_usd += seg.duration_seconds * price
             except Exception as e:
                 logger.error("Failed to generate clip for segment %d: %s", seg.segment_id, e)
                 raise

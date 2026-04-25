@@ -72,8 +72,11 @@ def _run_job(job: dict) -> None:
 
     project = None  # guard against unbound reference in except block
 
-    # Load config and providers
+    # Load config — fresh per job so per-campaign overrides are thread-safe
     config = load_config()
+    if job.get("visual_model") and "visuals" in config.providers:
+        config.providers["visuals"].model = job["visual_model"]
+
     providers = instantiate_providers(config)
 
     # Resolve brand + projects dir
@@ -97,14 +100,18 @@ def _run_job(job: dict) -> None:
         project = Project.create(projects_dir, brand_name, job["angle"])
         _set_job_status(job_id, "running", project_id=project.state.project_id, phase="research")
 
+    # Inject target duration so the planning phase can read it from brief.json
+    brief["_target_duration"] = job.get("target_duration") or 30
+
     # Write brief.json for the phase override to read (also used on resume)
     brief_path = project.project_dir / "brief.json"
     brief_path.write_text(json.dumps(brief))
 
-    phase_overrides = {
+    phase_overrides: dict = {
         "research": _brief_phase(brief),
-        "review": _web_review_phase,
     }
+    if not job.get("auto_approve"):
+        phase_overrides["review"] = _web_review_phase
 
     # Wrap run_pipeline to update phase in DB as each phase starts
     original_mark_running = project.mark_phase_running
@@ -137,7 +144,10 @@ def _run_job(job: dict) -> None:
 
         run_pipeline(project, brand, providers, phase_overrides=phase_overrides)
         output_path = str(project.output_path)
-        _set_job_status(job_id, "complete", output_path=output_path, phase="render")
+        total_cost = 0.0
+        for p in (providers.llm, providers.tts, providers.visual, providers.renderer):
+            total_cost += getattr(p, "cost_usd", 0.0)
+        _set_job_status(job_id, "complete", output_path=output_path, phase="render", cost_usd=round(total_cost, 4))
         logger.info("Job %d complete — output: %s", job_id, output_path)
 
     except _ReviewPending:
@@ -169,7 +179,8 @@ def _poll_loop() -> None:
                     cur.execute(
                         """
                         SELECT j.id, j.angle, j.status, j.phase, j.project_id,
-                               j.plan_json, c.brief, c.brand_name
+                               j.plan_json, c.brief, c.brand_name, c.auto_approve,
+                               c.visual_model, c.target_duration
                         FROM jobs j
                         JOIN campaigns c ON c.id = j.campaign_id
                         WHERE j.status = 'pending'

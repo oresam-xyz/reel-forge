@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getJob, approveJob, rejectJob, retryJob, videoUrl, getPhaseData } from '../api/jobs'
+import { getJob, approveJob, rejectJob, retryJob, resetPhase, patchScript, videoUrl, getPhaseData, splitJobVideo, projectFileUrl } from '../api/jobs'
+import type { ScriptSegmentPatch, SplitPart } from '../api/jobs'
 import type { Job } from '../api/campaigns'
 import PhaseStepper from '../components/PhaseStepper.vue'
 import PlanReview from '../components/PlanReview.vue'
@@ -16,6 +17,33 @@ const rejecting = ref(false)
 const selectedPhase = ref<string | null>(null)
 const phaseData = ref<any>(null)
 const phaseLoading = ref(false)
+// Phase reset
+const resettingPhase = ref<string | null>(null)
+// Video split
+const showSplitPanel = ref(false)
+const splitMaxMb = ref(10)
+const splitting = ref(false)
+const splitParts = ref<SplitPart[] | null>(null)
+const splitError = ref('')
+
+async function handleSplit() {
+  splitting.value = true
+  splitError.value = ''
+  splitParts.value = null
+  try {
+    const result = await splitJobVideo(id, splitMaxMb.value)
+    splitParts.value = result.parts
+  } catch (e: any) {
+    splitError.value = e?.response?.data?.detail ?? 'Split failed'
+  } finally {
+    splitting.value = false
+  }
+}
+
+// Script editor
+const scriptEditMode = ref(false)
+const scriptDraft = ref<ScriptSegmentPatch[]>([])
+const savingScript = ref(false)
 let pollInterval: ReturnType<typeof setInterval>
 
 async function load() {
@@ -101,6 +129,50 @@ async function handleRetry() {
   await load()
 }
 
+const RESETABLE_PHASES = ['planning', 'script', 'assets', 'render']
+
+async function handleResetPhase(phase: string) {
+  resettingPhase.value = phase
+  try {
+    await resetPhase(id, phase)
+    selectedPhase.value = null
+    phaseData.value = null
+    await load()
+  } finally {
+    resettingPhase.value = null
+  }
+}
+
+function enterScriptEdit() {
+  const segments: any[] = phaseData.value?.segments ?? []
+  scriptDraft.value = segments.map((s: any) => ({
+    segment_id: s.segment_id,
+    narration: s.narration ?? '',
+    visual_prompt: s.visual_prompt ?? '',
+    duration_seconds: s.duration_seconds ?? 5,
+  }))
+  scriptEditMode.value = true
+}
+
+function cancelScriptEdit() {
+  scriptEditMode.value = false
+  scriptDraft.value = []
+}
+
+async function saveScript() {
+  savingScript.value = true
+  try {
+    await patchScript(id, scriptDraft.value)
+    scriptEditMode.value = false
+    scriptDraft.value = []
+    selectedPhase.value = null
+    phaseData.value = null
+    await load()
+  } finally {
+    savingScript.value = false
+  }
+}
+
 function fmtBytes(n: number) {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
@@ -120,7 +192,65 @@ function fmtBytes(n: number) {
       <!-- Left: stepper + metadata -->
       <div class="w-52 flex-shrink-0">
         <div class="label mb-3">pipeline</div>
-        <PhaseStepper :phases="phaseStates" :selected="selectedPhase ?? undefined" @select="selectPhase" />
+        <!-- Custom phase stepper with reset buttons -->
+        <ol class="space-y-0.5">
+          <li
+            v-for="phase in phaseStates"
+            :key="phase.name"
+            class="flex items-center gap-2 rounded-lg px-2 py-2 transition-colors"
+            :class="{
+              'cursor-pointer': phase.state === 'complete' || phase.state === 'failed',
+              'cursor-default': phase.state === 'pending' || phase.state === 'running' || phase.state === 'review',
+            }"
+            :style="selectedPhase === phase.name
+              ? 'background: rgba(0,229,255,0.07); border-left: 2px solid var(--cyan); padding-left: 10px;'
+              : 'border-left: 2px solid transparent'"
+            @click="(phase.state === 'complete' || phase.state === 'failed') && selectPhase(phase.name)"
+          >
+            <!-- Icon -->
+            <span class="phase-icon flex-shrink-0"
+              :class="{
+                'phase-complete': phase.state === 'complete',
+                'phase-running animate-pulse': phase.state === 'running',
+                'phase-review': phase.state === 'review',
+                'phase-failed': phase.state === 'failed',
+                'phase-pending': phase.state === 'pending',
+              }"
+            >
+              <span v-if="phase.state === 'complete'">✓</span>
+              <span v-else-if="phase.state === 'running'">⟳</span>
+              <span v-else-if="phase.state === 'review'">!</span>
+              <span v-else-if="phase.state === 'failed'">✗</span>
+              <span v-else>○</span>
+            </span>
+            <!-- Label -->
+            <span class="text-sm capitalize font-semibold tracking-wide flex-1 min-w-0 truncate"
+              :style="{
+                color: phase.state === 'complete' ? 'var(--neon-green)'
+                     : phase.state === 'running'  ? 'var(--cyan)'
+                     : phase.state === 'review'   ? 'var(--amber)'
+                     : phase.state === 'failed'   ? 'var(--red)'
+                     : 'rgba(100,116,139,0.5)',
+              }"
+            >{{ phase.name }}</span>
+            <!-- Reset button for completed resetable phases -->
+            <button
+              v-if="phase.state === 'complete' && RESETABLE_PHASES.includes(phase.name)"
+              class="mono text-xs flex-shrink-0 transition-opacity"
+              :disabled="resettingPhase !== null"
+              :style="resettingPhase === phase.name
+                ? 'color: var(--cyan); opacity: 0.5; cursor: not-allowed'
+                : 'color: var(--text-muted); opacity: 0.6'"
+              :title="`Reset ${phase.name} phase`"
+              @click.stop="handleResetPhase(phase.name)"
+              @mouseover="(e) => { if (!resettingPhase) (e.target as HTMLElement).style.opacity = '1' }"
+              @mouseout="(e) => { if (!resettingPhase) (e.target as HTMLElement).style.opacity = '0.6' }"
+            >{{ resettingPhase === phase.name ? '…' : '↺' }}</button>
+            <!-- Chevron for non-resettable clickable phases -->
+            <span v-else-if="(phase.state === 'complete' || phase.state === 'failed') && !RESETABLE_PHASES.includes(phase.name)"
+              class="ml-auto text-xs" style="color: var(--text-muted)">›</span>
+          </li>
+        </ol>
         <div class="mt-6 space-y-2">
           <div>
             <div class="label">status</div>
@@ -133,6 +263,10 @@ function fmtBytes(n: number) {
           <div>
             <div class="label">updated</div>
             <p class="mono text-xs mt-0.5" style="color: var(--text-muted)">{{ new Date(job.updated_at).toLocaleString() }}</p>
+          </div>
+          <div v-if="job.cost_usd != null && job.cost_usd > 0">
+            <div class="label">cost</div>
+            <p class="mono text-xs mt-0.5" style="color: #22d3ee; font-family: monospace">${{ job.cost_usd.toFixed(4) }}</p>
           </div>
         </div>
       </div>
@@ -184,15 +318,87 @@ function fmtBytes(n: number) {
 
           <!-- Script -->
           <div v-else-if="selectedPhase === 'script' && phaseData" class="space-y-3 text-sm">
-            <p v-if="phaseData.title" class="font-bold" style="color: var(--text-primary)">{{ phaseData.title }}</p>
-            <div v-if="phaseData.segments?.length" class="space-y-3">
-              <div v-for="seg in phaseData.segments" :key="seg.segment_id" class="card-cyber p-4 space-y-2">
-                <div class="label">Seg {{ seg.segment_id }} — {{ seg.duration_seconds }}s</div>
-                <p style="color: var(--text-primary)">{{ seg.narration }}</p>
-                <p class="text-xs italic" style="color: var(--text-muted)">{{ seg.visual_prompt }}</p>
+            <!-- Read mode -->
+            <template v-if="!scriptEditMode">
+              <div class="flex items-center justify-between">
+                <p v-if="phaseData.title" class="font-bold" style="color: var(--text-primary)">{{ phaseData.title }}</p>
+                <button
+                  v-if="phaseData.segments?.length && !['assets','render'].includes(job?.phase ?? '') && job?.status !== 'complete'"
+                  class="mono text-xs transition-colors ml-auto"
+                  style="color: var(--cyan); opacity: 0.8"
+                  @mouseover="(e) => (e.target as HTMLElement).style.opacity = '1'"
+                  @mouseout="(e) => (e.target as HTMLElement).style.opacity = '0.8'"
+                  @click="enterScriptEdit"
+                >[ edit script ]</button>
               </div>
-            </div>
-            <p class="mono text-xs" style="color: var(--text-muted)">Total: {{ phaseData.total_duration?.toFixed(1) }}s</p>
+              <div v-if="phaseData.segments?.length" class="space-y-3">
+                <div v-for="seg in phaseData.segments" :key="seg.segment_id" class="card-cyber p-4 space-y-2">
+                  <div class="label">Seg {{ seg.segment_id }} — {{ seg.duration_seconds }}s</div>
+                  <p style="color: var(--text-primary)">{{ seg.narration }}</p>
+                  <p class="text-xs italic" style="color: var(--text-muted)">{{ seg.visual_prompt }}</p>
+                </div>
+              </div>
+              <p class="mono text-xs" style="color: var(--text-muted)">Total: {{ phaseData.total_duration?.toFixed(1) }}s</p>
+            </template>
+
+            <!-- Edit mode -->
+            <template v-else>
+              <div class="flex items-center justify-between mb-1">
+                <div class="label" style="color: var(--cyan)">editing script</div>
+                <div class="mono text-xs" style="color: var(--text-muted)">changes reset assets + render</div>
+              </div>
+              <div class="space-y-4">
+                <div v-for="(seg, i) in scriptDraft" :key="seg.segment_id"
+                  class="card-cyber p-4 space-y-3">
+                  <div class="flex items-center justify-between">
+                    <div class="label">Seg {{ seg.segment_id }}</div>
+                    <div class="flex items-center gap-2">
+                      <span class="label">duration (s)</span>
+                      <input
+                        v-model.number="scriptDraft[i].duration_seconds"
+                        type="number"
+                        min="1"
+                        max="30"
+                        step="0.5"
+                        class="input-cyber text-xs py-1 px-2"
+                        style="width: 4.5rem"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div class="label mb-1">narration</div>
+                    <textarea
+                      v-model="scriptDraft[i].narration"
+                      class="input-cyber resize-none text-sm"
+                      rows="3"
+                      placeholder="Narration text…"
+                    />
+                  </div>
+                  <div>
+                    <div class="label mb-1">visual prompt</div>
+                    <textarea
+                      v-model="scriptDraft[i].visual_prompt"
+                      class="input-cyber resize-none text-xs"
+                      style="color: var(--text-muted)"
+                      rows="2"
+                      placeholder="Visual description…"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="flex gap-3 pt-2">
+                <button
+                  class="btn-ghost flex-1"
+                  :disabled="savingScript"
+                  @click="cancelScriptEdit"
+                >[ cancel ]</button>
+                <button
+                  class="btn-cyber flex-1"
+                  :disabled="savingScript"
+                  @click="saveScript"
+                >{{ savingScript ? '[ saving… ]' : '[ save &amp; regenerate ]' }}</button>
+              </div>
+            </template>
           </div>
 
           <!-- Assets -->
@@ -256,12 +462,74 @@ function fmtBytes(n: number) {
           />
 
           <!-- Complete -->
-          <VideoPlayer
-            v-else-if="job.status === 'complete'"
-            :src="videoUrl(id)"
-            :job-id="id"
-            :campaign-id="job.campaign_id"
-          />
+          <template v-else-if="job.status === 'complete'">
+            <VideoPlayer
+              :src="videoUrl(id)"
+              :job-id="id"
+              :campaign-id="job.campaign_id"
+            />
+            <div v-if="job.cost_usd != null && job.cost_usd > 0" class="mt-4">
+              <div class="label mb-0.5">production cost</div>
+              <p class="mono text-sm" style="color: #22d3ee; font-family: monospace">${{ job.cost_usd.toFixed(4) }}</p>
+            </div>
+
+            <!-- Split for WhatsApp -->
+            <div class="mt-5">
+              <button
+                class="mono text-xs transition-colors"
+                style="color: var(--cyan); opacity: 0.8"
+                @mouseover="(e) => (e.target as HTMLElement).style.opacity = '1'"
+                @mouseout="(e) => (e.target as HTMLElement).style.opacity = '0.8'"
+                @click="showSplitPanel = !showSplitPanel; splitParts = null; splitError = ''"
+              >{{ showSplitPanel ? '[ ✕ close split ]' : '[ split for WhatsApp ]' }}</button>
+
+              <div v-if="showSplitPanel" class="mt-3 space-y-3 rounded-xl p-4"
+                style="background: rgba(0,0,0,0.3); border: 1px solid var(--border)">
+                <div class="flex items-center gap-3">
+                  <div class="label">max size</div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model.number="splitMaxMb"
+                      type="number"
+                      min="1"
+                      max="100"
+                      step="1"
+                      class="input-cyber text-xs py-1 px-2"
+                      style="width: 5rem"
+                    />
+                    <span class="mono text-xs" style="color: var(--text-muted)">MB</span>
+                  </div>
+                  <button class="btn-cyber text-xs px-3 py-1.5 ml-auto" :disabled="splitting" @click="handleSplit">
+                    {{ splitting ? '[ splitting… ]' : '[ split ]' }}
+                  </button>
+                </div>
+
+                <p v-if="splitError" class="mono text-xs" style="color: var(--red)">{{ splitError }}</p>
+
+                <div v-if="splitParts !== null" class="space-y-2">
+                  <template v-if="splitParts.length === 1 && splitParts[0].filename === 'output.mp4'">
+                    <p class="mono text-xs" style="color: var(--neon-green)">
+                      ✓ Video is already under {{ splitMaxMb }} MB — no split needed.
+                    </p>
+                  </template>
+                  <template v-else>
+                    <div v-for="part in splitParts" :key="part.filename"
+                      class="flex items-center gap-3 rounded-lg px-3 py-2"
+                      style="background: rgba(0,0,0,0.3); border: 1px solid var(--border)">
+                      <span class="mono text-xs flex-1" style="color: var(--text-primary)">{{ part.filename }}</span>
+                      <span class="mono text-xs" style="color: var(--text-muted)">{{ part.size_mb }} MB</span>
+                      <a
+                        :href="projectFileUrl(id, part.filename)"
+                        class="mono text-xs transition-colors"
+                        style="color: var(--cyan)"
+                        download
+                      >↓ download</a>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </template>
 
           <!-- Failed -->
           <div v-else-if="job.status === 'failed'" class="space-y-4">

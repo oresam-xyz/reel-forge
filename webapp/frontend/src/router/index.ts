@@ -4,6 +4,7 @@ import CampaignsView from '../views/CampaignsView.vue'
 import CampaignView from '../views/CampaignView.vue'
 import JobView from '../views/JobView.vue'
 import AuthCallback from '../views/AuthCallback.vue'
+import SettingsView from '../views/SettingsView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -13,6 +14,7 @@ const router = createRouter({
     { path: '/', component: CampaignsView, meta: { requiresAuth: true } },
     { path: '/campaigns/:id', component: CampaignView, meta: { requiresAuth: true } },
     { path: '/jobs/:id', component: JobView, meta: { requiresAuth: true } },
+    { path: '/settings', component: SettingsView, meta: { requiresAuth: true } },
   ],
 })
 

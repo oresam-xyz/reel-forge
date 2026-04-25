@@ -14,12 +14,16 @@ export interface Campaign {
   name: string
   brief: Brief
   brand_name: string
+  auto_approve: boolean
+  visual_model: string
+  target_duration: number
   created_at: string
   pending: number
   running: number
   review_pending: number
   complete: number
   failed: number
+  total_cost_usd: number | null
 }
 
 export interface CampaignDetail extends Campaign {
@@ -38,11 +42,12 @@ export interface Job {
   error: string | null
   created_at: string
   updated_at: string
+  cost_usd: number | null
 }
 
 export const listCampaigns = () => client.get<Campaign[]>('/api/campaigns').then((r) => r.data)
 export const getCampaign = (id: number) => client.get<CampaignDetail>(`/api/campaigns/${id}`).then((r) => r.data)
-export const createCampaign = (body: { name: string; brief: Brief; brand_name: string }) =>
+export const createCampaign = (body: { name: string; brief: Brief; brand_name: string; auto_approve: boolean; visual_model: string; target_duration: number }) =>
   client.post<Campaign>('/api/campaigns', body).then((r) => r.data)
 export const deleteCampaign = (id: number) => client.delete(`/api/campaigns/${id}`)
 export const queueJobs = (campaignId: number, angles: string[]) =>

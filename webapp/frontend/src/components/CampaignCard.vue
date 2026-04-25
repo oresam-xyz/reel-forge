@@ -21,6 +21,10 @@ defineProps<{ campaign: Campaign }>()
       <span v-if="campaign.complete"      class="pill pill-complete">{{ campaign.complete }} done</span>
       <span v-if="campaign.failed"        class="pill pill-failed">{{ campaign.failed }} failed</span>
     </div>
-    <p class="mono text-xs mt-3" style="color: rgba(100,116,139,0.6)">{{ new Date(campaign.created_at).toLocaleDateString() }}</p>
+    <div class="flex items-center justify-between mt-3">
+      <p class="mono text-xs" style="color: rgba(100,116,139,0.6)">{{ new Date(campaign.created_at).toLocaleDateString() }}</p>
+      <p v-if="campaign.total_cost_usd != null && campaign.total_cost_usd > 0"
+        class="mono text-xs" style="color: rgba(100,116,139,0.8); font-family: monospace">${{ campaign.total_cost_usd.toFixed(2) }} spent</p>
+    </div>
   </div>
 </template>

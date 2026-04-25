@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
 from reelforge.agent.brand import BrandIdentity
@@ -75,12 +76,22 @@ def run(project: Project, brand: BrandIdentity, providers: Providers) -> None:
             f"Address this feedback in the new plan."
         )
 
+    # Read target duration from brief.json if available (set by webapp worker)
+    brief_path = project.project_dir / "brief.json"
+    target_duration = 30
+    if brief_path.exists():
+        try:
+            brief_data = json.loads(brief_path.read_text())
+            target_duration = brief_data.get("_target_duration", 30)
+        except Exception:
+            pass
+
     prompt = PLANNING_PROMPT.format(
         topic=project.state.topic,
         brand_system_prompt=brand.system_prompt,
         key_facts=key_facts_text,
         regeneration_section=regeneration_section,
-        target_duration=60,
+        target_duration=target_duration,
         always_does=", ".join(brand.data.persona.always_does) or "(none)",
         never_does=", ".join(brand.data.persona.never_does) or "(none)",
     )
