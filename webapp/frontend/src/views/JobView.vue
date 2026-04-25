@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { getJob, approveJob, rejectJob, retryJob, resetPhase, patchScript, videoUrl, getPhaseData, splitJobVideo, projectFileUrl, assetFileUrl } from '../api/jobs'
 import type { ScriptSegmentPatch, SplitPart } from '../api/jobs'
 import type { Job } from '../api/campaigns'
-import PhaseStepper from '../components/PhaseStepper.vue'
 import PlanReview from '../components/PlanReview.vue'
 import VideoPlayer from '../components/VideoPlayer.vue'
 
@@ -346,7 +345,7 @@ function fmtBytes(n: number) {
               <div v-if="phaseData.segments?.length" class="space-y-4 pt-2">
                 <div v-for="(seg, i) in phaseData.segments" :key="i"
                   class="pl-3 space-y-1" style="border-left: 2px solid var(--border)">
-                  <div class="label">Seg {{ i + 1 }} — {{ seg.duration_seconds }}s</div>
+                  <div class="label">Seg {{ (i as number) + 1 }} — {{ Number(seg.duration_seconds) }}s</div>
                   <p style="color: var(--text-primary)">{{ seg.narration }}</p>
                   <p class="text-xs italic" style="color: var(--text-muted)">{{ seg.visual_brief }}</p>
                 </div>
