@@ -9,7 +9,7 @@ from pathlib import Path
 
 import httpx
 
-from reelforge.providers.base import AudioAsset, TTSProvider
+from reelforge.providers.base import AudioAsset, TTSProvider, raise_if_credit_error
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,7 @@ class ElevenLabsTTS(TTSProvider):
         resp = self._client.post(url, json=payload, headers=headers)
         if not resp.is_success:
             logger.error("ElevenLabs error %d: %s", resp.status_code, resp.text[:300])
+        raise_if_credit_error(resp, "ElevenLabs")
         resp.raise_for_status()
         self.cost_usd += len(text) * 0.00030  # $0.30 per 1000 chars
 

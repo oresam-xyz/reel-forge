@@ -352,6 +352,74 @@ def get_phase_data(job_id: int, phase_name: str, user=Depends(get_current_user))
         raise HTTPException(status_code=400, detail=f"Unknown phase: {phase_name}")
 
 
+@router.get("/{job_id}/assets/{filename}")
+def get_asset_file(job_id: int, filename: str, request: Request, token: str | None = None):
+    user = _get_user_token_or_query(request, token)
+    job = _get_job_for_user(job_id, user)
+
+    _ALLOWED_AUDIO_VIDEO = (".mp4", ".wav", ".mp3")
+    if ".." in filename or "/" in filename or not any(filename.endswith(ext) for ext in _ALLOWED_AUDIO_VIDEO):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    project_id = job.get("project_id")
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project not yet created")
+
+    path = PROJECTS_ROOT / project_id / "assets" / filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    _MIME = {".mp4": "video/mp4", ".wav": "audio/wav", ".mp3": "audio/mpeg"}
+    media_type = _MIME.get(Path(filename).suffix.lower(), "application/octet-stream")
+    file_size = path.stat().st_size
+    range_header = request.headers.get("range")
+
+    if range_header:
+        byte_range = range_header.replace("bytes=", "").strip()
+        start_str, _, end_str = byte_range.partition("-")
+        start = int(start_str) if start_str else 0
+        end = int(end_str) if end_str else file_size - 1
+        end = min(end, file_size - 1)
+        length = end - start + 1
+
+        def iter_range():
+            with open(path, "rb") as f:
+                f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    data = f.read(min(65536, remaining))
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    yield data
+
+        return StreamingResponse(
+            iter_range(),
+            status_code=206,
+            media_type=media_type,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(length),
+            },
+        )
+
+    def iter_full():
+        with open(path, "rb") as f:
+            while chunk := f.read(65536):
+                yield chunk
+
+    return StreamingResponse(
+        iter_full(),
+        media_type=media_type,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(file_size),
+            "Content-Disposition": f'inline; filename="{filename}"',
+        },
+    )
+
+
 @router.get("/{job_id}/files/{filename}")
 def get_project_file(job_id: int, filename: str, request: Request, token: str | None = None):
     user = _get_user_token_or_query(request, token)

@@ -7,7 +7,7 @@ import logging
 
 import httpx
 
-from reelforge.providers.base import LLMProvider
+from reelforge.providers.base import LLMProvider, raise_if_credit_error
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,7 @@ class OpenRouterLLM(LLMProvider):
 
         logger.debug("OpenRouter request: model=%s, messages=%d", self.model, len(messages))
         resp = self._client.post(_BASE_URL, json=payload, headers=self._headers)
+        raise_if_credit_error(resp, "OpenRouter")
         resp.raise_for_status()
         data = resp.json()
         usage = data.get("usage", {})

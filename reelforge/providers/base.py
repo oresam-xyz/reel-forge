@@ -12,6 +12,55 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
+# Provider error types
+# ---------------------------------------------------------------------------
+
+class ProviderCreditError(Exception):
+    """Raised when a provider rejects a request due to insufficient credits / quota."""
+
+    def __init__(self, provider: str, detail: str = "") -> None:
+        self.provider = provider
+        self.detail = detail
+        super().__init__(f"[CREDIT_LIMIT:{provider}] {detail}" if detail else f"[CREDIT_LIMIT:{provider}]")
+
+
+def raise_if_credit_error(response: Any, provider: str) -> None:
+    """Check an httpx Response for credit/quota errors and raise ProviderCreditError if found.
+
+    Covers HTTP 402 (payment required) and common 401/403/429 bodies that
+    mention credits, quota, or billing across fal.ai, ElevenLabs, and OpenRouter.
+    Call this *before* response.raise_for_status() on any billing-sensitive request.
+    """
+    status = response.status_code
+    if status == 402:
+        try:
+            body = response.json()
+            detail = (
+                body.get("detail")
+                or body.get("message")
+                or body.get("error", {}).get("message", "")
+                or str(body)
+            )
+        except Exception:
+            detail = response.text[:200]
+        raise ProviderCreditError(provider, detail or "Insufficient credits")
+
+    # Some services return 401/403/429 for quota exhaustion — check body keywords
+    if status in (401, 403, 429):
+        try:
+            text = response.text.lower()
+        except Exception:
+            return
+        if any(kw in text for kw in ("quota", "credit", "billing", "limit exceeded", "out of credits", "insufficient")):
+            try:
+                body = response.json()
+                detail = body.get("detail") or body.get("message") or body.get("error", {}).get("message", "") or text[:200]
+            except Exception:
+                detail = text[:200]
+            raise ProviderCreditError(provider, str(detail))
+
+
+# ---------------------------------------------------------------------------
 # Brand Identity Models
 # ---------------------------------------------------------------------------
 

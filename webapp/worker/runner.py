@@ -13,7 +13,7 @@ from reelforge.agent.brand import BrandIdentity
 from reelforge.agent.project import Project
 from reelforge.agent.runner import instantiate_providers, run_pipeline
 from reelforge.config import load_config
-from reelforge.providers.base import ResearchNotes
+from reelforge.providers.base import ProviderCreditError, ResearchNotes
 from webapp.db.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -158,6 +158,10 @@ def _run_job(job: dict) -> None:
             plan_json=plan.model_dump(),
         )
         logger.info("Job %d paused for plan review", job_id)
+    except ProviderCreditError as e:
+        current_phase = project.state.current_phase if project else None
+        _set_job_status(job_id, "failed", error=str(e), phase=current_phase)
+        logger.warning("Job %d failed — credit limit on %s: %s", job_id, e.provider, e.detail)
     except Exception as e:
         current_phase = project.state.current_phase if project else None
         _set_job_status(job_id, "failed", error=str(e), phase=current_phase)

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import httpx
 
-from reelforge.providers.base import SegmentBrief, VisualAsset, VisualProvider
+from reelforge.providers.base import SegmentBrief, VisualAsset, VisualProvider, raise_if_credit_error
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +93,7 @@ class FalAIVisual(VisualProvider):
         # Submit to queue using full model path
         submit_url = f"{_FAL_QUEUE_URL}/{self._model_id}"
         resp = self._client.post(submit_url, json=payload)
+        raise_if_credit_error(resp, "fal.ai")
         resp.raise_for_status()
         request_id = resp.json()["request_id"]
         # Status/result use only owner/alias (first two path segments), not the versioned tail
@@ -107,6 +108,7 @@ class FalAIVisual(VisualProvider):
         for _ in range(120):
             time.sleep(5)
             status_resp = self._client.get(status_url)
+            raise_if_credit_error(status_resp, "fal.ai")
             status_resp.raise_for_status()
             status = status_resp.json().get("status")
             logger.debug("fal.ai status: %s", status)

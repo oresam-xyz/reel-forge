@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getJob, approveJob, rejectJob, retryJob, resetPhase, patchScript, videoUrl, getPhaseData, splitJobVideo, projectFileUrl } from '../api/jobs'
+import { getJob, approveJob, rejectJob, retryJob, resetPhase, patchScript, videoUrl, getPhaseData, splitJobVideo, projectFileUrl, assetFileUrl } from '../api/jobs'
 import type { ScriptSegmentPatch, SplitPart } from '../api/jobs'
 import type { Job } from '../api/campaigns'
 import PhaseStepper from '../components/PhaseStepper.vue'
@@ -17,8 +17,26 @@ const rejecting = ref(false)
 const selectedPhase = ref<string | null>(null)
 const phaseData = ref<any>(null)
 const phaseLoading = ref(false)
+// Live assets progress (auto-polled during assets phase)
+const assetsProgress = ref<{ name: string; size_bytes: number; type: string }[]>([])
+const scriptSegmentCount = ref(0)
+
 // Phase reset
 const resettingPhase = ref<string | null>(null)
+// Asset media player
+const selectedClip = ref<string | null>(null)
+const selectedAudio = ref<string | null>(null)
+
+function toggleClip(name: string, type: string) {
+  if (type === 'mp4') {
+    selectedAudio.value = null
+    selectedClip.value = selectedClip.value === name ? null : name
+  } else if (type === 'wav' || type === 'mp3') {
+    selectedClip.value = null
+    selectedAudio.value = selectedAudio.value === name ? null : name
+  }
+}
+
 // Video split
 const showSplitPanel = ref(false)
 const splitMaxMb = ref(10)
@@ -48,6 +66,21 @@ let pollInterval: ReturnType<typeof setInterval>
 
 async function load() {
   job.value = await getJob(id)
+  if (job.value?.status === 'running' && job.value?.phase === 'assets') {
+    try {
+      const data = await getPhaseData(id, 'assets')
+      assetsProgress.value = data.files ?? []
+    } catch { /* non-fatal */ }
+    if (!scriptSegmentCount.value) {
+      try {
+        const script = await getPhaseData(id, 'script')
+        scriptSegmentCount.value = script.segments?.length ?? 0
+      } catch { /* non-fatal */ }
+    }
+  } else if (job.value?.phase !== 'assets') {
+    assetsProgress.value = []
+    scriptSegmentCount.value = 0
+  }
 }
 
 function startPolling() {
@@ -80,6 +113,7 @@ const phaseStates = computed(() => {
 })
 
 async function selectPhase(name: string) {
+  selectedClip.value = null
   if (selectedPhase.value === name) {
     selectedPhase.value = null
     phaseData.value = null
@@ -172,6 +206,13 @@ async function saveScript() {
     savingScript.value = false
   }
 }
+
+const creditAlert = computed(() => {
+  const err = job.value?.error ?? ''
+  const m = err.match(/^\[CREDIT_LIMIT:([^\]]+)\]\s*(.*)$/)
+  if (!m) return null
+  return { provider: m[1], detail: m[2] || 'Account credit limit reached.' }
+})
 
 function fmtBytes(n: number) {
   if (n < 1024) return `${n} B`
@@ -402,27 +443,77 @@ function fmtBytes(n: number) {
           </div>
 
           <!-- Assets -->
-          <div v-else-if="selectedPhase === 'assets' && phaseData" class="space-y-2 text-sm">
-            <div class="label mb-3">generated files</div>
-            <div v-if="phaseData.files?.length" class="space-y-2">
-              <div v-for="f in phaseData.files" :key="f.name"
-                class="flex items-center gap-3 rounded-lg px-3 py-2.5"
-                style="background: rgba(0,0,0,0.3); border: 1px solid var(--border)">
-                <span class="mono text-xs px-2 py-0.5 rounded"
-                  :style="f.type === 'mp4' ? 'background: rgba(0,229,255,0.1); color: var(--cyan); border: 1px solid rgba(0,229,255,0.2)'
-                         : f.type === 'wav' || f.type === 'mp3' ? 'background: rgba(224,64,251,0.1); color: var(--magenta); border: 1px solid rgba(224,64,251,0.2)'
-                         : 'background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border)'"
+          <div v-else-if="selectedPhase === 'assets' && phaseData" class="space-y-3 text-sm">
+            <!-- Inline video player -->
+            <div v-if="selectedClip" class="rounded-xl overflow-hidden"
+              style="border: 1px solid var(--border); box-shadow: 0 0 20px rgba(0,229,255,0.06)">
+              <div class="flex items-center justify-between px-3 py-2"
+                style="background: rgba(0,0,0,0.4); border-bottom: 1px solid var(--border)">
+                <span class="mono text-xs" style="color: var(--cyan)">{{ selectedClip }}</span>
+                <button type="button" class="mono text-xs transition-colors" style="color: var(--text-muted)"
+                  @mouseover="(e) => (e.target as HTMLElement).style.color = 'var(--cyan)'"
+                  @mouseout="(e) => (e.target as HTMLElement).style.color = 'var(--text-muted)'"
+                  @click="selectedClip = null">✕ close</button>
+              </div>
+              <video :src="assetFileUrl(id, selectedClip)" :key="selectedClip" controls autoplay
+                class="bg-black block" style="aspect-ratio: 9/16; max-width: 220px; max-height: 400px; margin: 0 auto" />
+            </div>
+
+            <!-- Inline audio player -->
+            <div v-if="selectedAudio" class="rounded-xl overflow-hidden"
+              style="border: 1px solid rgba(224,64,251,0.35); box-shadow: 0 0 20px rgba(224,64,251,0.06)">
+              <div class="flex items-center justify-between px-3 py-2"
+                style="background: rgba(0,0,0,0.4); border-bottom: 1px solid rgba(224,64,251,0.2)">
+                <span class="mono text-xs" style="color: var(--magenta)">{{ selectedAudio }}</span>
+                <button type="button" class="mono text-xs transition-colors" style="color: var(--text-muted)"
+                  @mouseover="(e) => (e.target as HTMLElement).style.color = 'var(--magenta)'"
+                  @mouseout="(e) => (e.target as HTMLElement).style.color = 'var(--text-muted)'"
+                  @click="selectedAudio = null">✕ close</button>
+              </div>
+              <div class="px-4 py-3">
+                <audio :src="assetFileUrl(id, selectedAudio)" :key="selectedAudio" controls autoplay class="w-full" style="accent-color: var(--magenta)" />
+              </div>
+            </div>
+
+            <!-- File list -->
+            <div v-if="phaseData.files?.length" class="space-y-1.5">
+              <button
+                v-for="f in phaseData.files"
+                :key="f.name"
+                type="button"
+                class="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors text-left"
+                :style="selectedClip === f.name
+                  ? 'background: rgba(0,229,255,0.07); border: 1px solid var(--cyan); cursor: pointer'
+                  : selectedAudio === f.name
+                    ? 'background: rgba(224,64,251,0.07); border: 1px solid rgba(224,64,251,0.5); cursor: pointer'
+                    : (f.type === 'mp4' || f.type === 'wav' || f.type === 'mp3')
+                      ? 'background: rgba(0,0,0,0.3); border: 1px solid var(--border); cursor: pointer'
+                      : 'background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.04); cursor: default'"
+                @click="toggleClip(f.name, f.type)"
+              >
+                <span class="mono text-xs px-2 py-0.5 rounded flex-shrink-0"
+                  :style="f.type === 'mp4'
+                    ? 'background: rgba(0,229,255,0.1); color: var(--cyan); border: 1px solid rgba(0,229,255,0.2)'
+                    : f.type === 'wav' || f.type === 'mp3'
+                      ? 'background: rgba(224,64,251,0.1); color: var(--magenta); border: 1px solid rgba(224,64,251,0.2)'
+                      : 'background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border)'"
                 >{{ f.type }}</span>
                 <span class="mono text-xs flex-1" style="color: var(--text-primary)">{{ f.name }}</span>
                 <span class="mono text-xs" style="color: var(--text-muted)">{{ fmtBytes(f.size_bytes) }}</span>
-              </div>
+                <span v-if="f.type === 'mp4' || f.type === 'wav' || f.type === 'mp3'"
+                  class="mono text-xs flex-shrink-0"
+                  :style="f.type === 'wav' || f.type === 'mp3' ? 'color: var(--magenta)' : 'color: var(--text-muted)'">
+                  {{ (selectedClip === f.name || selectedAudio === f.name) ? '▲' : '▶' }}
+                </span>
+              </button>
             </div>
             <p v-else style="color: var(--text-muted)">No asset files found.</p>
           </div>
 
           <!-- Render -->
           <div v-else-if="selectedPhase === 'render' && phaseData" class="space-y-4 text-sm">
-            <p v-if="phaseData.output_size_bytes" class="mono text-xs" style="color: var(--text-muted)">
+            <VideoPlayer :src="videoUrl(id)" :job-id="id" :campaign-id="job.campaign_id" />
+            <p v-if="phaseData.output_size_bytes" class="mono text-xs text-center" style="color: var(--text-muted)">
               output.mp4 — {{ fmtBytes(phaseData.output_size_bytes) }}
             </p>
             <div v-if="phaseData.captions?.words?.length" class="card-cyber p-5">
@@ -445,10 +536,113 @@ function fmtBytes(n: number) {
           </div>
 
           <!-- Running -->
-          <div v-else-if="job.status === 'running'" class="py-20 text-center">
-            <div class="mono text-5xl mb-4 animate-spin inline-block" style="color: var(--cyan)">⟳</div>
-            <p class="mt-3 text-xl font-bold capitalize tracking-wide" style="color: var(--text-primary)">{{ job.phase }}</p>
-            <p class="text-sm mt-1" style="color: var(--text-muted)">In progress — refreshing every 5s</p>
+          <div v-else-if="job.status === 'running'">
+            <!-- Assets phase: show clip-by-clip progress -->
+            <template v-if="job.phase === 'assets' && assetsProgress.length">
+              <div class="mb-5 flex items-center gap-3">
+                <div class="mono text-xl animate-spin inline-block flex-shrink-0" style="color: var(--cyan)">⟳</div>
+                <div>
+                  <p class="text-lg font-bold tracking-wide" style="color: var(--text-primary)">Generating Assets</p>
+                  <p class="text-xs mt-0.5" style="color: var(--text-muted)">
+                    {{ assetsProgress.filter(f => f.name.startsWith('clip_')).length }}
+                    <template v-if="scriptSegmentCount"> / {{ scriptSegmentCount }}</template>
+                    clips done — refreshing every 5s
+                  </p>
+                </div>
+              </div>
+
+              <!-- Progress bar -->
+              <div v-if="scriptSegmentCount" class="mb-4 h-1.5 rounded-full overflow-hidden" style="background: rgba(255,255,255,0.07)">
+                <div
+                  class="h-full rounded-full transition-all duration-500"
+                  style="background: var(--cyan)"
+                  :style="{ width: (assetsProgress.filter(f => f.name.startsWith('clip_')).length / scriptSegmentCount * 100) + '%' }"
+                />
+              </div>
+
+              <!-- Inline video player for live progress view -->
+              <div v-if="selectedClip" class="mb-3 rounded-xl overflow-hidden"
+                style="border: 1px solid var(--border); box-shadow: 0 0 20px rgba(0,229,255,0.06)">
+                <div class="flex items-center justify-between px-3 py-2"
+                  style="background: rgba(0,0,0,0.4); border-bottom: 1px solid var(--border)">
+                  <span class="mono text-xs" style="color: var(--cyan)">{{ selectedClip }}</span>
+                  <button type="button" class="mono text-xs transition-colors" style="color: var(--text-muted)"
+                    @mouseover="(e) => (e.target as HTMLElement).style.color = 'var(--cyan)'"
+                    @mouseout="(e) => (e.target as HTMLElement).style.color = 'var(--text-muted)'"
+                    @click="selectedClip = null">✕ close</button>
+                </div>
+                <video :src="assetFileUrl(id, selectedClip)" :key="selectedClip" controls autoplay
+                  class="bg-black block" style="aspect-ratio: 9/16; max-width: 220px; max-height: 400px; margin: 0 auto" />
+              </div>
+
+              <!-- Inline audio player for live progress view -->
+              <div v-if="selectedAudio" class="mb-3 rounded-xl overflow-hidden"
+                style="border: 1px solid rgba(224,64,251,0.35); box-shadow: 0 0 20px rgba(224,64,251,0.06)">
+                <div class="flex items-center justify-between px-3 py-2"
+                  style="background: rgba(0,0,0,0.4); border-bottom: 1px solid rgba(224,64,251,0.2)">
+                  <span class="mono text-xs" style="color: var(--magenta)">{{ selectedAudio }}</span>
+                  <button type="button" class="mono text-xs transition-colors" style="color: var(--text-muted)"
+                    @mouseover="(e) => (e.target as HTMLElement).style.color = 'var(--magenta)'"
+                    @mouseout="(e) => (e.target as HTMLElement).style.color = 'var(--text-muted)'"
+                    @click="selectedAudio = null">✕ close</button>
+                </div>
+                <div class="px-4 py-3">
+                  <audio :src="assetFileUrl(id, selectedAudio)" :key="selectedAudio" controls autoplay class="w-full" style="accent-color: var(--magenta)" />
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <button
+                  v-for="f in assetsProgress"
+                  :key="f.name"
+                  type="button"
+                  class="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all text-left"
+                  :style="selectedClip === f.name
+                    ? 'background: rgba(0,229,255,0.07); border: 1px solid var(--cyan); cursor: pointer'
+                    : selectedAudio === f.name
+                      ? 'background: rgba(224,64,251,0.07); border: 1px solid rgba(224,64,251,0.5); cursor: pointer'
+                      : 'background: rgba(0,0,0,0.3); border: 1px solid var(--border); cursor: pointer'"
+                  @click="toggleClip(f.name, f.type)"
+                >
+                  <span class="mono text-xs px-2 py-0.5 rounded flex-shrink-0"
+                    :style="f.type === 'mp4'
+                      ? 'background: rgba(0,229,255,0.1); color: var(--cyan); border: 1px solid rgba(0,229,255,0.2)'
+                      : 'background: rgba(224,64,251,0.1); color: var(--magenta); border: 1px solid rgba(224,64,251,0.2)'"
+                  >{{ f.type }}</span>
+                  <span class="mono text-xs flex-1" style="color: var(--text-primary)">{{ f.name }}</span>
+                  <span class="mono text-xs" style="color: var(--text-muted)">{{ fmtBytes(f.size_bytes) }}</span>
+                  <span class="text-xs"
+                    :style="f.type === 'wav' || f.type === 'mp3' ? 'color: var(--magenta)' : 'color: var(--neon-green)'">
+                    {{ (selectedClip === f.name || selectedAudio === f.name) ? '▲' : '▶' }}
+                  </span>
+                </button>
+
+                <!-- Pending clips -->
+                <template v-if="scriptSegmentCount">
+                  <div
+                    v-for="i in scriptSegmentCount - assetsProgress.filter(f => f.name.startsWith('clip_')).length"
+                    :key="'pending-' + i"
+                    class="flex items-center gap-3 rounded-lg px-3 py-2.5"
+                    style="background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.04)">
+                    <span class="mono text-xs px-2 py-0.5 rounded flex-shrink-0"
+                      style="background: rgba(255,255,255,0.03); color: rgba(100,116,139,0.4); border: 1px solid rgba(255,255,255,0.06)">mp4</span>
+                    <span class="mono text-xs flex-1 animate-pulse" style="color: rgba(100,116,139,0.4)">
+                      clip_{{ String(assetsProgress.filter(f => f.name.startsWith('clip_')).length + i).padStart(2, '0') }}.mp4
+                    </span>
+                    <span class="mono text-xs animate-pulse" style="color: rgba(100,116,139,0.3)">generating…</span>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <!-- All other phases: standard spinner -->
+            <template v-else>
+              <div class="py-20 text-center">
+                <div class="mono text-5xl mb-4 animate-spin inline-block" style="color: var(--cyan)">⟳</div>
+                <p class="mt-3 text-xl font-bold capitalize tracking-wide" style="color: var(--text-primary)">{{ job.phase }}</p>
+                <p class="text-sm mt-1" style="color: var(--text-muted)">In progress — refreshing every 5s</p>
+              </div>
+            </template>
           </div>
 
           <!-- Review pending -->
@@ -533,10 +727,27 @@ function fmtBytes(n: number) {
 
           <!-- Failed -->
           <div v-else-if="job.status === 'failed'" class="space-y-4">
-            <div class="rounded-xl p-5" style="background: rgba(255,61,61,0.06); border: 1px solid rgba(255,61,61,0.2)">
+            <!-- Credit limit alert -->
+            <div v-if="creditAlert" class="rounded-xl p-5 space-y-3"
+              style="background: rgba(245,158,11,0.07); border: 1px solid rgba(245,158,11,0.35)">
+              <div class="flex items-center gap-2">
+                <span class="text-base">⚠</span>
+                <p class="font-bold text-sm tracking-wide" style="color: #f59e0b">
+                  {{ creditAlert.provider }} — Credit Limit Reached
+                </p>
+              </div>
+              <p class="text-sm" style="color: rgba(245,158,11,0.85)">{{ creditAlert.detail }}</p>
+              <p class="text-xs" style="color: rgba(245,158,11,0.55)">
+                Top up your {{ creditAlert.provider }} account, then retry this job.
+              </p>
+            </div>
+
+            <!-- Generic error -->
+            <div v-else class="rounded-xl p-5" style="background: rgba(255,61,61,0.06); border: 1px solid rgba(255,61,61,0.2)">
               <p class="mono text-xs mb-3" style="color: var(--red)">✗ FAILED AT: {{ job.phase }}</p>
               <pre class="text-xs whitespace-pre-wrap overflow-auto max-h-60" style="color: rgba(255,100,100,0.8); font-family: 'Share Tech Mono', monospace">{{ job.error }}</pre>
             </div>
+
             <button class="btn-ghost" @click="handleRetry">↺ Retry</button>
           </div>
         </template>

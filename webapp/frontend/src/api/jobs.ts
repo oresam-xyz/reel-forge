@@ -35,6 +35,12 @@ export interface SplitResult {
 export const splitJobVideo = (id: number, max_size_mb = 10) =>
   client.post<SplitResult>(`/api/jobs/${id}/split`, { max_size_mb }).then((r) => r.data)
 
+export const assetFileUrl = (id: number, filename: string) => {
+  const token = localStorage.getItem('rf_token')
+  const base = `${client.defaults.baseURL}/api/jobs/${id}/assets/${encodeURIComponent(filename)}`
+  return token ? `${base}?token=${encodeURIComponent(token)}` : base
+}
+
 export const projectFileUrl = (id: number, filename: string) => {
   const token = localStorage.getItem('rf_token')
   const base = `${client.defaults.baseURL}/api/jobs/${id}/files/${encodeURIComponent(filename)}`

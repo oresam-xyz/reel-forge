@@ -40,7 +40,25 @@ app.include_router(brands.router)
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    _reset_stale_jobs()
     start_worker()
+
+
+def _reset_stale_jobs() -> None:
+    """Reset any jobs left in 'running' state from a previous server process."""
+    from webapp.db.database import get_db
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE jobs SET status = 'pending' WHERE status = 'running'"
+            )
+            count = cur.rowcount
+        conn.commit()
+    if count:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Reset %d stale running job(s) to pending on startup", count
+        )
 
 
 @app.get("/auth/google")
