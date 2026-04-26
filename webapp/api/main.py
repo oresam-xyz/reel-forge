@@ -67,10 +67,10 @@ def google_login():
     return RedirectResponse(url)
 
 
-@app.get("/auth/google/callback")
+@app.get("/auth/callback")
 def google_callback(code: str):
     user_info = auth.exchange_code_for_user(code, CALLBACK_URL)
     user_id = auth.upsert_user(user_info)
     token = auth.create_jwt(user_id, user_info["email"])
     # Redirect frontend — token passed as query param, stored in localStorage
-    return RedirectResponse(f"{FRONTEND_URL}/auth/callback?token={token}")
+    return RedirectResponse(f"{FRONTEND_URL}/auth-complete?token={token}")

@@ -11,6 +11,7 @@ const router = createRouter({
   routes: [
     { path: '/login', component: LoginView },
     { path: '/auth/callback', component: AuthCallback },
+    { path: '/auth-complete', component: AuthCallback },
     { path: '/', component: CampaignsView, meta: { requiresAuth: true } },
     { path: '/campaigns/:id', component: CampaignView, meta: { requiresAuth: true } },
     { path: '/jobs/:id', component: JobView, meta: { requiresAuth: true } },
