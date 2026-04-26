@@ -41,6 +41,28 @@ def _generate_captions(audio_path: str) -> CaptionData:
     return CaptionData(words=words)
 
 
+def _generate_captions_from_script(project: Project) -> CaptionData:
+    """Fallback: distribute words evenly across segment durations when Whisper is unavailable."""
+    from reelforge.providers.base import WordTimestamp
+
+    script = project.load_script()
+    words = []
+    time_offset = 0.0
+    for seg in script.segments:
+        seg_words = seg.narration.split()
+        if not seg_words:
+            time_offset += seg.duration_seconds
+            continue
+        word_duration = seg.duration_seconds / len(seg_words)
+        for i, word in enumerate(seg_words):
+            start = time_offset + i * word_duration
+            words.append(WordTimestamp(word=word, start=start, end=start + word_duration))
+        time_offset += seg.duration_seconds
+
+    logger.info("Generated %d script-based word timestamps (no Whisper)", len(words))
+    return CaptionData(words=words)
+
+
 def _collect_visual_assets(project: Project) -> list[VisualAsset]:
     """Collect all visual assets (video clips or images) from the project's assets directory."""
     assets_dir = project.assets_dir
@@ -65,8 +87,12 @@ def run(project: Project, brand: BrandIdentity, providers: Providers) -> None:
     script = project.load_script()
     audio_path = str(project.asset_path("audio.wav"))
 
-    # Generate word-level captions from audio
-    captions = _generate_captions(audio_path)
+    # Generate word-level captions — prefer Whisper, fall back to script-based timing
+    try:
+        captions = _generate_captions(audio_path)
+    except ImportError:
+        logger.warning("Whisper not available — falling back to script-based caption timing")
+        captions = _generate_captions_from_script(project)
 
     # Reverse brand pronunciation substitutions so captions show display text
     if brand.data.pronunciations:

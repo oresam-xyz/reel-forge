@@ -515,9 +515,9 @@ function fmtBytes(n: number) {
             <p v-if="phaseData.output_size_bytes" class="mono text-xs text-center" style="color: var(--text-muted)">
               output.mp4 — {{ fmtBytes(phaseData.output_size_bytes) }}
             </p>
-            <div v-if="phaseData.captions?.words?.length" class="card-cyber p-5">
+            <div v-if="phaseData.captions?.words?.length" class="card-cyber p-5 overflow-hidden">
               <div class="label mb-3">captions — {{ phaseData.captions.words.length }} words</div>
-              <p class="leading-relaxed text-sm" style="color: var(--text-primary)">
+              <p class="leading-relaxed text-sm break-words" style="color: var(--text-primary); overflow-wrap: break-word; word-break: break-word">
                 <span v-for="(w, i) in phaseData.captions.words" :key="i" class="mr-1">{{ w.word }}</span>
               </p>
             </div>

@@ -77,20 +77,24 @@ class FFmpegRenderer(RendererProvider):
         x_expr = f"iw/2-(iw/zoom/2)"
         y_expr = f"ih/2-(ih/zoom/2)"
 
+        # Scale to 110% of target to give zoom headroom, keeping memory manageable
+        zoom_width = int(width * 1.1)
+        zoom_height = int(height * 1.1)
         cmd = [
             self.ffmpeg_path, "-y",
             "-loop", "1",
             "-i", image_path,
             "-vf", (
-                f"scale={width * 2}:{height * 2},"
+                f"scale={zoom_width}:{zoom_height}:force_original_aspect_ratio=increase,"
+                f"crop={zoom_width}:{zoom_height},"
                 f"zoompan=z='{zoom_expr}':x='{x_expr}':y='{y_expr}'"
                 f":d={total_frames}:s={width}x{height}:fps={self.fps},"
                 f"format=yuv420p"
             ),
             "-t", str(duration),
             "-c:v", "libx264",
-            "-preset", "medium",
-            "-crf", "23",
+            "-preset", "fast",
+            "-crf", "26",
             "-pix_fmt", "yuv420p",
             output_path,
         ]

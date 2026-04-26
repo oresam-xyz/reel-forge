@@ -30,6 +30,13 @@ def _web_review_phase(project, brand, providers):
     raise _ReviewPending("Plan ready for web review")
 
 
+def _auto_approve_review(project, brand, providers):
+    """Auto-approve the plan without human review."""
+    plan = project.load_plan()
+    plan.approved = True
+    project.save_plan(plan)
+
+
 def _brief_phase(brief: dict):
     """Return a phase_override function that injects the campaign brief as research."""
     def run(project, brand, providers):
@@ -109,9 +116,8 @@ def _run_job(job: dict) -> None:
 
     phase_overrides: dict = {
         "research": _brief_phase(brief),
+        "review": _auto_approve_review if job.get("auto_approve") else _web_review_phase,
     }
-    if not job.get("auto_approve"):
-        phase_overrides["review"] = _web_review_phase
 
     # Wrap run_pipeline to update phase in DB as each phase starts
     original_mark_running = project.mark_phase_running
@@ -144,10 +150,10 @@ def _run_job(job: dict) -> None:
 
         run_pipeline(project, brand, providers, phase_overrides=phase_overrides)
         output_path = str(project.output_path)
-        total_cost = 0.0
-        for p in (providers.llm, providers.tts, providers.visual, providers.renderer):
-            total_cost += getattr(p, "cost_usd", 0.0)
-        _set_job_status(job_id, "complete", output_path=output_path, phase="render", cost_usd=round(total_cost, 4))
+        run_cost = sum(getattr(p, "cost_usd", 0.0) for p in (providers.llm, providers.tts, providers.visual, providers.renderer))
+        prior_cost = float(job.get("cost_usd") or 0.0)
+        total_cost = round(prior_cost + run_cost, 4)
+        _set_job_status(job_id, "complete", output_path=output_path, phase="render", cost_usd=total_cost)
         logger.info("Job %d complete — output: %s", job_id, output_path)
 
     except _ReviewPending:
