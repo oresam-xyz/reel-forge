@@ -43,6 +43,8 @@ export interface Job {
   created_at: string
   updated_at: string
   cost_usd: number | null
+  script_description?: string
+  script_tags?: string[]
 }
 
 export const listCampaigns = () => client.get<Campaign[]>('/api/campaigns').then((r) => r.data)

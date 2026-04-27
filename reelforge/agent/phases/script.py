@@ -38,6 +38,8 @@ Instructions:
 Return a JSON object:
 {{
   "title": "video title",
+  "description": "2–3 sentence video description suitable for posting on social media (TikTok, Instagram, YouTube Shorts). Hooks the viewer, summarises the value, ends with a soft CTA.",
+  "tags": ["tag1", "tag2", "tag3"],
   "segments": [
     {{
       "segment_id": 0,
@@ -48,6 +50,8 @@ Return a JSON object:
   ],
   "total_duration": 60.0
 }}
+
+For tags: include 8–12 tags — mix of broad niche tags, specific topic tags, and platform discovery tags (e.g. #fyp, #shorts). Return without the # prefix.
 """
 
 
@@ -90,8 +94,13 @@ def run(project: Project, brand: BrandIdentity, providers: Providers) -> None:
             duration_seconds=seg.get("duration_seconds", 5.0),
         ))
 
+    raw_tags = script_data.get("tags", [])
+    tags = [t.lstrip("#").strip() for t in raw_tags if t.strip()]
+
     script = Script(
         title=script_data.get("title", project.state.topic),
+        description=script_data.get("description", ""),
+        tags=tags,
         segments=segments,
         total_duration=script_data.get("total_duration", sum(s.duration_seconds for s in segments)),
     )

@@ -213,6 +213,10 @@ const creditAlert = computed(() => {
   return { provider: m[1], detail: m[2] || 'Account credit limit reached.' }
 })
 
+function copyText(text: string) {
+  navigator.clipboard.writeText(text)
+}
+
 function fmtBytes(n: number) {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
@@ -379,6 +383,19 @@ function fmtBytes(n: number) {
                 </div>
               </div>
               <p class="mono text-xs" style="color: var(--text-muted)">Total: {{ phaseData.total_duration?.toFixed(1) }}s</p>
+              <div v-if="phaseData.description" class="mt-2 pt-3" style="border-top: 1px solid var(--border)">
+                <div class="label mb-1">caption</div>
+                <p class="text-sm leading-relaxed" style="color: var(--text-primary)">{{ phaseData.description }}</p>
+              </div>
+              <div v-if="phaseData.tags?.length" class="mt-2">
+                <div class="label mb-1">tags</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span v-for="tag in phaseData.tags" :key="tag"
+                    class="mono text-xs px-2 py-0.5 rounded"
+                    style="background: rgba(0,229,255,0.07); border: 1px solid rgba(0,229,255,0.2); color: var(--cyan)"
+                  >#{{ tag }}</span>
+                </div>
+              </div>
             </template>
 
             <!-- Edit mode -->
@@ -664,6 +681,39 @@ function fmtBytes(n: number) {
             <div v-if="job.cost_usd != null && job.cost_usd > 0" class="mt-4">
               <div class="label mb-0.5">production cost</div>
               <p class="mono text-sm" style="color: #22d3ee; font-family: monospace">${{ job.cost_usd.toFixed(4) }}</p>
+            </div>
+
+            <!-- Description + tags -->
+            <div v-if="job.script_description || job.script_tags?.length" class="mt-5 space-y-3">
+              <div v-if="job.script_description">
+                <div class="label mb-1">caption</div>
+                <p class="text-sm leading-relaxed" style="color: var(--text-primary)">{{ job.script_description }}</p>
+                <button
+                  class="mono text-xs mt-1 transition-opacity"
+                  style="color: var(--cyan); opacity: 0.7"
+                  @click="copyText(job.script_description!)"
+                  @mouseover="(e) => (e.target as HTMLElement).style.opacity = '1'"
+                  @mouseout="(e) => (e.target as HTMLElement).style.opacity = '0.7'"
+                >[ copy ]</button>
+              </div>
+              <div v-if="job.script_tags?.length">
+                <div class="label mb-1">tags</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span
+                    v-for="tag in job.script_tags"
+                    :key="tag"
+                    class="mono text-xs px-2 py-0.5 rounded"
+                    style="background: rgba(0,229,255,0.07); border: 1px solid rgba(0,229,255,0.2); color: var(--cyan)"
+                  >#{{ tag }}</span>
+                </div>
+                <button
+                  class="mono text-xs mt-1.5 transition-opacity"
+                  style="color: var(--cyan); opacity: 0.7"
+                  @click="copyText(job.script_tags!.map((t: string) => '#' + t).join(' '))"
+                  @mouseover="(e) => (e.target as HTMLElement).style.opacity = '1'"
+                  @mouseout="(e) => (e.target as HTMLElement).style.opacity = '0.7'"
+                >[ copy all tags ]</button>
+              </div>
             </div>
 
             <!-- Split for WhatsApp -->

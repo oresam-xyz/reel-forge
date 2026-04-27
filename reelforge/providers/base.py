@@ -153,6 +153,8 @@ class Script(BaseModel):
     title: str
     segments: list[ScriptSegment] = Field(default_factory=list)
     total_duration: float = 0.0
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

@@ -40,7 +40,18 @@ def _get_job_for_user(job_id: int, user: dict) -> dict:
 
 @router.get("/{job_id}")
 def get_job(job_id: int, user=Depends(get_current_user)):
-    return _get_job_for_user(job_id, user)
+    job = dict(_get_job_for_user(job_id, user))
+    project_id = job.get("project_id")
+    if project_id:
+        script_path = PROJECTS_ROOT / project_id / "assets" / "script.json"
+        if script_path.exists():
+            try:
+                script = json.loads(script_path.read_text())
+                job["script_description"] = script.get("description", "")
+                job["script_tags"] = script.get("tags", [])
+            except Exception:
+                pass
+    return job
 
 
 class ApproveIn(BaseModel):
