@@ -130,7 +130,7 @@ async function saveBrand() {
 <template>
   <div class="min-h-screen text-white">
     <header class="site-header px-6 py-4 flex items-center gap-3">
-      <button class="label transition-colors hover:text-gray-300" @click="router.push('/')">← Back</button>
+      <button class="label transition-colors hover:text-gray-300" @click="router.push('/campaigns')">← Back</button>
       <span style="color: var(--border)">/</span>
       <span class="font-semibold" style="color: var(--text-primary)">Settings</span>
     </header>

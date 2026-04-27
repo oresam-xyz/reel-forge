@@ -37,7 +37,7 @@ async function handleDelete() {
   deleting.value = true
   try {
     await deleteCampaign(id)
-    router.push('/')
+    router.push('/campaigns')
   } finally {
     deleting.value = false
   }
@@ -47,7 +47,7 @@ async function handleDelete() {
 <template>
   <div class="min-h-screen text-white">
     <header class="site-header px-6 py-4 flex items-center gap-3">
-      <button class="label transition-colors hover:text-gray-300" @click="router.push('/')">← Campaigns</button>
+      <button class="label transition-colors hover:text-gray-300" @click="router.push('/campaigns')">← Campaigns</button>
       <span style="color: var(--border)">/</span>
       <span class="font-semibold" style="color: var(--text-primary)">{{ campaign?.name }}</span>
       <div class="ml-auto">

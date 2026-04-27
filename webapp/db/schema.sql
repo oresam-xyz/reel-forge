@@ -54,3 +54,19 @@ DROP TRIGGER IF EXISTS jobs_updated_at ON jobs;
 CREATE TRIGGER jobs_updated_at
     BEFORE UPDATE ON jobs
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    id          SERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    brand_name  TEXT NOT NULL DEFAULT '__inbox__',
+    messages    JSONB NOT NULL DEFAULT '[]',
+    cost_usd    NUMERIC(10,6) NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, brand_name)
+);
+
+DROP TRIGGER IF EXISTS chat_sessions_updated_at ON chat_sessions;
+CREATE TRIGGER chat_sessions_updated_at
+    BEFORE UPDATE ON chat_sessions
+    FOR EACH ROW EXECUTE FUNCTION touch_updated_at();

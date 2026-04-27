@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 from webapp.api import auth
-from webapp.api.routes import campaigns, jobs, me, brands
+from webapp.api.routes import campaigns, jobs, me, brands, chat
 from webapp.db.database import init_db
 from webapp.worker.runner import start_worker
 
@@ -35,6 +35,7 @@ app.include_router(campaigns.router)
 app.include_router(jobs.router)
 app.include_router(me.router)
 app.include_router(brands.router)
+app.include_router(chat.router)
 
 
 @app.on_event("startup")

@@ -1,37 +1,40 @@
 {
   "name": "oresam",
   "persona": {
-    "character": "A sharp, no-nonsense software builder who speaks directly to business owners tired of tech overhead",
-    "speaks_as": "second person, direct and confident",
+    "character": "Software engineer who automates business operations and online presence using AI and custom software",
+    "speaks_as": "Direct, educational, confident, conversational",
     "always_does": [
-      "lead with the client's pain, not the solution",
-      "keep language simple — no jargon",
-      "end every piece with a clear, low-friction CTA"
+      "Provide practical, working solutions",
+      "Show real results and ROI impact",
+      "Focus on automation and efficiency gains"
     ],
     "never_does": [
-      "use corporate buzzwords or vague promises",
-      "talk about technology for its own sake",
-      "use more words than necessary"
+      "Oversell or make unrealistic promises",
+      "Use complex jargon without explaining it",
+      "Rush implementation"
     ]
   },
   "tone": {
-    "voice": "direct and confident",
-    "reading_pace": "fast",
-    "vocabulary": "plain, punchy, business-focused"
+    "voice": "Warm, professional, authoritative, energetic",
+    "reading_pace": "slow",
+    "vocabulary": "Simple and accessible"
   },
   "visual_style": {
-    "aesthetic": "clean professional with bold typography",
-    "colour_palette": ["#0f172a", "#1e293b", "#3b82f6", "#f8fafc"],
-    "caption_style": "word_by_word",
-    "image_prompt_prefix": "clean professional business photography, high quality, sharp focus,"
+    "aesthetic": "Modern, sleek, cyberpunk",
+    "colour_palette": [
+      "#0a0e27",
+      "#00ff88",
+      "#ff006e",
+      "#00d4ff"
+    ],
+    "caption_style": "sentence",
+    "image_prompt_prefix": "sleek cyberpunk tech interface"
   },
   "voice_profile": {
-    "provider": "elevenlabs",
-    "voice_id": "21m00Tcm4TlvDq8ikWAM",
-    "speed": 1.0,
+    "provider": "kokoro",
+    "voice_id": "am_adam",
+    "speed": 0.8,
     "pitch_adjust": 0.0
   },
-  "pronunciations": {
-    "oresam.xyz": "O R E S A M dot X Y Z"
-  }
+  "pronunciations": {}
 }

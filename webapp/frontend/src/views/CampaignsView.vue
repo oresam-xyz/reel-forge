@@ -39,6 +39,7 @@ onMounted(load)
       </div>
       <div class="flex items-center gap-5">
         <span class="mono text-xs" style="color: var(--text-muted)">{{ auth.email }}</span>
+        <RouterLink to="/" class="label hover:text-gray-300 transition-colors">[ chat ]</RouterLink>
         <RouterLink to="/settings" class="label hover:text-gray-300 transition-colors">[ settings ]</RouterLink>
         <button class="label hover:text-gray-300 transition-colors" @click="handleLogout">[ logout ]</button>
       </div>
