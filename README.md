@@ -1,229 +1,172 @@
-# ReelForge
+# Reel-Forge
 
-A pluggable, stateful AI agent that generates faceless short-form video content (reels/shorts).
+AI-powered short-form video factory. Create faceless 9:16 video ads through a conversational web interface — define a brand, set up a campaign, and the pipeline handles research, scripting, voiceover, video generation, and rendering.
+
+**Live at:** [forge.oresam.xyz](https://forge.oresam.xyz)
+
+---
 
 ## Architecture
 
-ReelForge has two layers:
+Reel-Forge has two layers:
 
-1. **Brand Identity Layer** — persistent profiles that define the content creator persona, tone, visual style, and voice
-2. **Agent Pipeline** — a 6-phase stateful, resumable pipeline that produces a video for a given topic
+### Web Application (`webapp/`)
 
-### Pipeline Phases
+| Component | Stack |
+|-----------|-------|
+| Frontend | Vue 3 + TypeScript + Vite |
+| Backend | FastAPI + PostgreSQL |
+| Auth | Google OAuth |
+| Worker | Background job runner (same process) |
 
-| Phase | Description |
-|-------|-------------|
+The default route is the **chat interface** — a conversational assistant that walks you through brand creation and campaign setup. Once a campaign exists and jobs are queued, the pipeline runs and produces output videos.
+
+### Pipeline Engine (`reelforge/`)
+
+6-phase stateful pipeline that produces one video per job:
+
+| Phase | Output |
+|-------|--------|
 | Research | Web research via DuckDuckGo, summarised by LLM |
-| Planning | LLM generates a structured content plan |
-| Review | Human-in-the-loop: approve, edit, or regenerate the plan |
-| Script | LLM writes the full narration script |
-| Assets | Voice (TTS) + visuals (video clips) generated sequentially |
-| Render | FFmpeg composites clips + audio + word-by-word captions |
+| Planning | Structured content plan (`plan.json`) |
+| Review | Human approval via webapp or auto-approve |
+| Script | Narration + visual prompts per segment |
+| Assets | Voice (TTS) + video clips |
+| Render | FFmpeg composite → `output.mp4` |
 
-The pipeline is **resumable** — if it fails or is interrupted, run `reelforge resume` to pick up where it left off.
+The pipeline is **resumable** — if interrupted, it picks up from the last completed phase.
+
+---
 
 ## Setup
 
+### Requirements
+
+- Python 3.12+
+- Node.js 18+
+- PostgreSQL
+- FFmpeg
+
+### Install
+
 ```bash
 pip install -r requirements.txt
-```
 
-Install optional provider dependencies based on your config:
-
-```bash
-# For Kokoro TTS
+# Kokoro TTS (local, free)
 pip install kokoro soundfile
 
-# For AnimateDiff / Wan video generation
-pip install diffusers torch
-
-# For Claude LLM
-pip install anthropic
-
-# For MCP server
-pip install minimcp
-# Or from local source:
-pip install -e /path/to/minimcp
+cd webapp/frontend && npm install
 ```
 
-Copy and edit the config:
+### Configure
 
 ```bash
 cp config.example.yaml config.yaml
 ```
 
-## Usage
+Edit `config.yaml` with your provider keys. Minimum viable config:
 
-### CLI
+```yaml
+providers:
+  llm:
+    provider: openrouter
+    model: anthropic/claude-haiku-4-5
+    api_key: env:OPENROUTER_API_KEY
+  tts:
+    provider: kokoro
+    voice_id: af_heart
+  visuals:
+    provider: falai
+    model: kling-2.6-pro
+    api_key: env:FAL_KEY
+  renderer:
+    provider: ffmpeg
+```
 
-#### Create a brand
+Create a `.env` in the project root:
 
 ```bash
-reelforge brand create
+DATABASE_URL=postgresql://user:pass@localhost/reelforge
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+OPENROUTER_API_KEY=...
+FAL_KEY=...
+SECRET_KEY=<random 32-char string>
+ALLOWED_EMAILS=you@example.com
+FRONTEND_URL=http://localhost:5173
 ```
 
-This launches an interactive wizard to define your creator persona, tone, visual style, and voice profile.
-
-#### List brands
+### Run locally
 
 ```bash
-reelforge brand list
+# Start backend (port 8001)
+uvicorn webapp.api.main:app --reload --port 8001
+
+# Start frontend dev server (port 5173)
+cd webapp/frontend && npm run dev
 ```
 
-#### Create a new video
+### Run the database migrations
+
+Migrations are idempotent — run the schema on first setup and after any update:
 
 ```bash
-reelforge new --topic "5 AI tools you need in 2025" --brand example_brand
+psql $DATABASE_URL < webapp/db/schema.sql
 ```
 
-#### Resume a failed/interrupted project
-
-```bash
-reelforge resume --project 2025-01-15_5-ai-tools-you-need-in-2025
-```
-
-#### Auto-approve (skip interactive review)
-
-```bash
-reelforge new --topic "5 AI tools" --brand example_brand --auto-approve
-reelforge resume --project <project_id> --auto-approve
-```
-
-#### Check project status
-
-```bash
-reelforge status --project 2025-01-15_5-ai-tools-you-need-in-2025
-```
-
-#### Split video for WhatsApp
-
-WhatsApp has a 10 MB upload limit. Split a video into parts:
-
-```bash
-# Split a project's output
-reelforge split --project <project_id>
-
-# Split any video file
-reelforge split --file /path/to/video.mp4
-
-# Custom size limit (default: 10 MB)
-reelforge split --project <project_id> --max-size 8
-```
-
-### MCP Server
-
-ReelForge exposes an MCP (Model Context Protocol) server so AI agents can create and manage videos programmatically.
-
-#### Start the server
-
-```bash
-python3 -m reelforge.mcp_server
-```
-
-#### Configure in Claude Code
-
-Add to `.mcp.json` in the project root (already included):
-
-```json
-{
-  "mcpServers": {
-    "reelforge": {
-      "command": "python3",
-      "args": ["-m", "reelforge.mcp_server"],
-      "cwd": "/path/to/reel-forge"
-    }
-  }
-}
-```
-
-Set `REELFORGE_ROOT` env var to override the working directory.
-
-#### Available MCP Tools
-
-| Tool | Parameters | Description |
-|------|-----------|-------------|
-| `create_brand` | `name`, `character`, + optional style/voice fields | Create a brand identity |
-| `create_project` | `topic`, `brand` | Create a new video project |
-| `run_pipeline` | `project_id`, `auto_approve` (default: true) | Run or resume the pipeline |
-| `get_project_status` | `project_id` | Get phase-by-phase status |
-| `list_projects` | — | List all projects with status |
-| `list_brands` | — | List available brands |
-| `get_plan` | `project_id` | Get the content plan for review |
-| `approve_plan` | `project_id`, `approved`, `feedback` | Approve, edit, or reject a plan |
-| `reset_phases` | `project_id`, `from_phase` | Reset phases from a given point to re-run them |
-| `get_script` | `project_id` | Get the generated script |
-| `update_script` | `project_id`, `segment_id`, `narration`, `visual_prompt`, ... | Edit a specific script segment |
-| `split_video` | `project_id`, `max_size_mb` (default: 10) | Split output into parts for WhatsApp |
-
-#### Agent-driven workflow
-
-```
-create_project("5 facts about dogs", "my_brand")
-  → project_id
-
-run_pipeline(project_id, auto_approve=false)
-  → pauses at review
-
-get_plan(project_id)
-  → read the plan
-
-approve_plan(project_id, approved=true, feedback="make it funnier")
-  → plan updated and approved
-
-run_pipeline(project_id)
-  → completes remaining phases → output.mp4
-
-split_video(project_id, max_size_mb=10)
-  → splits for WhatsApp if needed
-```
-
-#### Edit and re-render workflow
-
-```
-get_script(project_id)
-  → read current script
-
-update_script(project_id, segment_id=0, narration="new text...")
-  → edit a segment
-
-reset_phases(project_id, from_phase="assets")
-  → reset assets + render
-
-run_pipeline(project_id)
-  → regenerates video with updated script
-```
+---
 
 ## Provider System
 
-ReelForge uses pluggable providers. Configure them in `config.yaml`:
+Configure in `config.yaml`. All providers are pluggable.
 
-| Category | Providers | Notes |
-|----------|-----------|-------|
-| LLM | `ollama`, `claude` | Ollama for local, Claude for API |
-| TTS | `kokoro`, `coqui` | Both run locally |
-| Visuals | `animatediff`, `wan`, `flux`, `pexels` | AnimateDiff/Wan for AI video, Pexels for stock |
-| Renderer | `ffmpeg` | Requires FFmpeg installed |
+| Category | Provider | Notes |
+|----------|----------|-------|
+| LLM | `openrouter` | Recommended — routes to Claude, GPT, etc. |
+| LLM | `ollama` | Local models (e.g. llama3.2) |
+| TTS | `kokoro` | Local, free. Voice IDs: `af_heart`, `af_sky`, `bf_emma`, `bf_isabella`, `am_adam`, `bm_george` |
+| TTS | `elevenlabs` | Cloud API |
+| Visuals | `falai` | fal.ai API — Kling 2.6 Pro recommended |
+| Visuals | `pexels` | Free stock video (no AI generation) |
+| Visuals | `animatediff` | Local GPU (requires ROCm/CUDA) |
+| Renderer | `ffmpeg` | Required, CPU-only |
 
-### GPU Notes
+---
 
-On GPUs with shared display (e.g. AMD RX 6600 with ~2.8GB free VRAM):
-- TTS and visual generation run **sequentially**, not in parallel
-- Each provider releases GPU memory before the next loads
-- AnimateDiff uses sequential CPU offload + attention slicing
-- AnimateDiff base model is configurable (default: `Lykon/dreamshaper-8` for better quality)
+## Chat Assistant
+
+The conversational assistant at `/` handles the full onboarding flow:
+
+1. **Create brand** — define persona, tone, visual style, voice
+2. **Create campaign** — product, audience, pain point, CTA
+3. **Suggest angles** — LLM generates 3–5 video angle options
+4. **Queue jobs** — selected angles queued as pipeline jobs
+
+Conversation history is persisted per brand in the `chat_sessions` table. Token costs are tracked and attributed to each session.
+
+---
 
 ## Project Structure
 
 ```
-reelforge/
-├── agent/         # Pipeline runner, project state, brand loader, phases
-├── providers/     # Abstract bases + concrete implementations
-├── cli/           # Typer CLI + brand wizard
-├── mcp_server.py  # MCP server for agent-driven workflows
-└── config.py      # YAML config loader
-brands/            # Brand identity profiles
-projects/          # Generated project outputs (gitignored)
+reelforge/           # Pipeline engine
+├── agent/           # Runner, project state, brand loader, phases
+├── providers/       # Abstract bases + implementations (LLM, TTS, visuals, renderer)
+├── cli/             # Typer CLI (brand wizard, run/resume/status)
+└── config.py        # YAML config loader
+
+webapp/              # Web application
+├── api/             # FastAPI app + routes (chat, campaigns, jobs, brands, me)
+├── db/              # schema.sql + database connection
+├── frontend/        # Vue 3 + Vite SPA
+└── worker/          # Background job runner
+
+brands/              # Brand identity profiles (gitignored on server)
+projects/            # Pipeline output (gitignored)
+config.yaml          # Provider config (gitignored)
 ```
+
+---
 
 ## License
 

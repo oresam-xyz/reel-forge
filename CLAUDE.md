@@ -1,71 +1,129 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
-## Running the Project
+## Running locally
 
 ```bash
-# CLI commands (run from repo root)
-python3 -m reelforge.cli.main new --topic "topic" --brand example_brand
-python3 -m reelforge.cli.main resume --project <project_id>
-python3 -m reelforge.cli.main status --project <project_id>
-python3 -m reelforge.cli.main brand create
-python3 -m reelforge.cli.main brand list
+# Backend (FastAPI, port 8001)
+uvicorn webapp.api.main:app --reload --port 8001
 
-# MCP server (stdio JSON-RPC, used by AI agents)
-python3 -m reelforge.mcp_server
-# Set REELFORGE_ROOT env var to override working directory
+# Frontend dev server (port 5173, proxies /api and /auth to :8001)
+cd webapp/frontend && npm run dev
+
+# Build frontend for production
+cd webapp/frontend && npm run build
 ```
 
-Requires `config.yaml` in the working directory (copy from `config.example.yaml`). Requires Ollama running locally with the configured model.
+Requires `config.yaml` in repo root (copy from `config.example.yaml`).
+Requires `.env` with `DATABASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OPENROUTER_API_KEY`, `FAL_KEY`, `SECRET_KEY`, `ALLOWED_EMAILS`, `FRONTEND_URL`.
+
+## Production
+
+- **URL:** forge.oresam.xyz
+- **Server:** 49.12.118.188 (root SSH), deployed to `/opt/reel-forge`
+- **Systemd service:** `reel-forge` — runs uvicorn on `127.0.0.1:8001`, nginx proxies it
+- **Deploy:** run `/deploy` from this directory
 
 ## Architecture
 
-### Two-Layer Design
+### Webapp layer (`webapp/`)
 
-**Brand Identity Layer**: Persistent JSON profiles in `brands/{name}/identity.json` defining persona, tone, visual style, and voice. Loaded by `BrandIdentity` in `reelforge/agent/brand.py`.
+**Backend** — FastAPI app in `webapp/api/main.py` with routes:
 
-**Agent Pipeline**: 6 sequential phases, each a module in `reelforge/agent/phases/` with a `run(project, brand, providers)` function:
+| Route file | Prefix | Purpose |
+|------------|--------|---------|
+| `chat.py` | `/api/chat` | Conversational assistant (brand + campaign creation) |
+| `campaigns.py` | `/api/campaigns` | Campaign CRUD |
+| `jobs.py` | `/api/jobs` | Job status, approval, output |
+| `brands.py` | `/api/brands` | Brand identity CRUD |
+| `me.py` | `/api/me` | Auth user settings |
 
-1. **research** — DuckDuckGo search + LLM summarization → `research.json`
-2. **planning** — LLM generates content plan → `plan.json`
-3. **review** — Interactive approval (CLI) or auto-approve (MCP) → updates `plan.json`
-4. **script** — LLM writes narration + visual prompts → `assets/script.json`
-5. **assets** — TTS audio then visual clips sequentially (GPU shared) → `assets/audio.wav` + `assets/clip_*.mp4`
-6. **render** — Whisper captions + FFmpeg composite → `output.mp4`
+**Frontend** — Vue 3 + TypeScript SPA in `webapp/frontend/src/`:
 
-### Pipeline Execution
+| View | Route | Purpose |
+|------|-------|---------|
+| `ChatView.vue` | `/` | Chat assistant — default landing page |
+| `CampaignsView.vue` | `/campaigns` | Campaign list |
+| `CampaignView.vue` | `/campaigns/:id` | Campaign detail + job list |
+| `JobView.vue` | `/jobs/:id` | Job status + video output |
+| `SettingsView.vue` | `/settings` | User + brand settings |
 
-`reelforge/agent/runner.py` orchestrates phases. `run_pipeline()` iterates PHASES, skips completed ones, marks failures in state. Accepts `phase_overrides` dict to substitute phase functions (used by MCP server to replace interactive review with auto-approve).
+**Database** — PostgreSQL, schema in `webapp/db/schema.sql` (idempotent, run to migrate):
 
-Each project is a directory under `projects/` with `state.json` tracking phase statuses. `Project` class in `reelforge/agent/project.py` manages all state and artifact I/O.
+| Table | Purpose |
+|-------|---------|
+| `users` | Google OAuth users |
+| `campaigns` | Campaign briefs (brand_name, brief JSON, auto_approve) |
+| `jobs` | Pipeline jobs (status, phase, cost_usd, output_path) |
+| `chat_sessions` | Per-brand conversation history + cost tracking |
 
-### Provider System
+**Worker** — `webapp/worker/runner.py` picks up `pending` jobs and drives the pipeline. Runs in the same process as the API (startup event), polls every few seconds.
 
-Abstract bases in `reelforge/providers/base.py`: `LLMProvider`, `TTSProvider`, `VisualProvider`, `RendererProvider`. Concrete implementations in subdirectories. `Providers` dataclass bundles all four.
+### Chat assistant (`webapp/api/routes/chat.py`)
 
-Provider instantiation is config-driven: `config.yaml` → `ProviderConfig` (Pydantic, allows extra fields) → `instantiate_providers()` in runner.py uses lazy imports and passes extra config as kwargs.
+Uses OpenRouter (claude-haiku-4-5) with tool use. Tool loop:
 
-All GPU-using providers (Kokoro, AnimateDiff, Wan) have a `release()` method that frees VRAM. The assets phase calls release between TTS and visuals, and after visuals before render.
+1. `list_brands` — fetch existing brands
+2. `create_brand` — write `brands/{name}/identity.json`
+3. `create_campaign` — insert into `campaigns` table
+4. `suggest_angles` — LLM generates 3–5 angles for the campaign
+5. `queue_jobs` — insert `pending` jobs for selected angles
 
-### MCP Server
+Conversation persisted in `chat_sessions` (JSONB). Token costs tracked at $0.80/$4.00 per 1M input/output (haiku-4-5).
 
-`reelforge/mcp_server.py` uses [minimcp](../minimcp) to expose 8 tools over stdio JSON-RPC. Tools are sync functions (minimcp runs them in executor). Config/providers are lazy-loaded singletons. Review phase is handled via `phase_overrides` — auto-approve or stop-before-review for agent-driven workflows.
+### Pipeline engine (`reelforge/`)
 
-### Data Models
+6-phase pipeline, one phase per file in `reelforge/agent/phases/`:
 
-All in `reelforge/providers/base.py` as Pydantic models: `BrandIdentityData`, `ContentPlan`, `Script`, `CaptionData`, `ProjectState`, `PhaseInfo`, plus asset types (`AudioAsset`, `VisualAsset`, `SegmentBrief`).
+1. `research.py` — DuckDuckGo + LLM summarise → `research.json`
+2. `planning.py` — LLM generates `ContentPlan` → `plan.json`
+3. `review.py` — interactive approval or auto-approve → updates `plan.json`
+4. `script.py` — LLM writes narration + visual prompts → `assets/script.json`
+5. `assets.py` — TTS audio then video clips → `assets/audio.wav`, `assets/clip_*.mp4`
+6. `render.py` — Whisper captions + FFmpeg composite → `output.mp4`
 
-## GPU Memory Constraints
+`reelforge/agent/runner.py` — iterates phases, skips completed, marks failures in `state.json`.
 
-This system runs on an AMD RX 6600 (8GB VRAM shared with display, ~2.8GB free for PyTorch). Key implications:
+Each job maps to a directory under `projects/` (path stored as `jobs.project_id`). `Project` in `reelforge/agent/project.py` manages state and artifact I/O.
 
-- GPU models load one at a time: TTS → release → visuals → release → Whisper
-- AnimateDiff uses `enable_sequential_cpu_offload()` + `enable_attention_slicing("auto")` — direct `.to("cuda")` won't fit
-- `enable_model_cpu_offload()` has a meta tensor bug on this PyTorch/ROCm combo — don't use it
-- AnimateDiff maxes out at 256x256 / 8 frames on this GPU
-- Wan2.1 text encoder (22GB) must run on CPU — impractically slow
+### Provider system
 
-## Config
+Abstract bases in `reelforge/providers/base.py`. Config-driven: `config.yaml` → `ProviderConfig` (Pydantic, `extra="allow"`) → `instantiate_providers()` in `runner.py`.
 
-`config.yaml` (gitignored) defines providers and their settings. `ProviderConfig` uses `extra="allow"` so any provider-specific fields pass through as kwargs. Environment variables supported via `env:VAR_NAME` syntax.
+Current production config: openrouter LLM, kokoro TTS, fal.ai (kling-2.6-pro) visuals, ffmpeg renderer.
+
+## Key files
+
+```
+webapp/api/main.py              # FastAPI app, router registration, startup
+webapp/api/routes/chat.py       # Chat assistant, tool loop, session persistence
+webapp/db/schema.sql            # Full DB schema (idempotent)
+webapp/frontend/src/views/      # All Vue page components
+webapp/frontend/src/api/        # Typed API clients
+webapp/worker/runner.py         # Job queue poller
+reelforge/agent/runner.py       # Pipeline orchestrator
+reelforge/agent/phases/         # One file per pipeline phase
+reelforge/providers/            # LLM, TTS, visuals, renderer implementations
+config.yaml                     # Provider config (gitignored)
+```
+
+## Common tasks
+
+**Add a new API route:**
+1. Create `webapp/api/routes/myroute.py` with an `APIRouter`
+2. Import and register in `webapp/api/main.py`
+
+**Add a pipeline phase:**
+1. Add a module to `reelforge/agent/phases/` with a `run(project, brand, providers)` function
+2. Insert into `PHASES` list in `reelforge/agent/runner.py`
+
+**Run DB migrations:**
+```bash
+psql $DATABASE_URL < webapp/db/schema.sql
+```
+
+**Check job logs on server:**
+```bash
+ssh root@49.12.118.188 "journalctl -u reel-forge -f"
+```
